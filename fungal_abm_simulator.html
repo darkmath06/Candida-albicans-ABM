@@ -1,0 +1,1509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fungal Colony ABM · Dual Petri Dish Simulator</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700&family=JetBrains+Mono:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root {
+  --bg:       #050c16;
+  --bg2:      #091420;
+  --bg3:      #0e1d2e;
+  --bg4:      #152436;
+  --border:   #1c3550;
+  --border2:  #254870;
+  --text:     #8fc4e0;
+  --text-dim: #3a6080;
+  --text-hi:  #d0ecff;
+  --accent:   #00d4ff;
+  --accent2:  #00ff9d;
+  --plus:     #4d9fff;
+  --plus-dim: #1a4a88;
+  --minus:    #ff5566;
+  --minus-dim:#881a24;
+  --apop:     #ffaa00;
+  --necro:    #999;
+  --starve:   #cc44ff;
+  --mono:     'JetBrains Mono', 'Courier New', monospace;
+  --ui:       'Syne', system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--ui);
+  min-height: 100%;
+  height: 100%;
+  overflow: auto;
+}
+
+/* ── SCROLLBARS ── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--bg2); }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+
+/* ── HEADER ── */
+.app-header {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 0 18px;
+  height: 50px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg2);
+  flex-shrink: 0;
+}
+.app-header .logo {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--text-hi);
+}
+.app-header .logo span { color: var(--accent); }
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.btn {
+  padding: 5px 14px;
+  border: 1px solid var(--border2);
+  background: var(--bg3);
+  color: var(--text-hi);
+  font-family: var(--ui);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: background 0.15s, border-color 0.15s;
+}
+.btn:hover { background: var(--bg4); border-color: var(--accent); color: var(--accent); }
+.btn.primary { background: #0a2a50; border-color: var(--plus); color: var(--plus); }
+.btn.primary:hover { background: #123a70; }
+.btn.danger { border-color: var(--minus-dim); color: var(--minus); }
+.btn.danger:hover { background: #2a0a10; border-color: var(--minus); }
+.btn.active { background: #0a3a5a; border-color: var(--accent); color: var(--accent); }
+
+.speed-ctrl {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.speed-ctrl input[type=range] {
+  width: 80px;
+  accent-color: var(--accent);
+}
+.speed-ctrl label { color: var(--text); font-weight: 500; }
+
+.status-bar {
+  margin-left: auto;
+  display: flex;
+  gap: 16px;
+  font-family: var(--mono);
+  font-size: 11px;
+}
+.status-item { color: var(--text-dim); }
+.status-item span { color: var(--text-hi); font-weight: 500; }
+
+/* ── MAIN LAYOUT ── */
+.app-body {
+  display: flex;
+  min-height: calc(100vh - 50px);
+  overflow: visible;
+}
+
+/* ── SIDEBAR ── */
+.param-sidebar {
+  width: 260px;
+  min-width: 260px;
+  border-right: 1px solid var(--border);
+  background: var(--bg2);
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+.sidebar-title {
+  padding: 12px 14px 8px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--border);
+}
+.param-section {
+  border-bottom: 1px solid var(--border);
+}
+.param-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text);
+  transition: background 0.1s;
+}
+.param-section-head:hover { background: var(--bg3); }
+.param-section-head .arrow {
+  font-size: 9px;
+  color: var(--text-dim);
+  transition: transform 0.2s;
+}
+.param-section-head.open .arrow { transform: rotate(90deg); }
+.param-section-body { display: none; padding: 6px 10px 10px; }
+.param-section-body.open { display: block; }
+
+.param-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 5px;
+  gap: 6px;
+}
+.param-row label {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.param-row input[type=number], .param-row select, .param-row input[type=text] {
+  width: 96px;
+  padding: 3px 6px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text-hi);
+  font-family: var(--mono);
+  font-size: 10px;
+  border-radius: 2px;
+  outline: none;
+  transition: border-color 0.15s;
+  flex-shrink: 0;
+}
+.param-row input:focus, .param-row select:focus { border-color: var(--accent); }
+.param-row select { cursor: pointer; }
+.param-row input[type=text] { width: 96px; }
+
+.sidebar-apply {
+  padding: 10px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--bg2);
+  position: sticky;
+  bottom: 0;
+}
+.sidebar-apply .btn { width: 100%; text-align: center; }
+
+/* ── SIM AREA ── */
+.sim-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 10px 12px 8px;
+  gap: 10px;
+  min-width: 0;
+}
+
+/* ── MODELS ROW ── */
+.models-row {
+  display: flex;
+  gap: 12px;
+  flex-shrink: 0;
+}
+.model-view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.model-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+}
+.model-label .dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.model-label .tag { font-size: 10px; font-weight: 400; color: var(--text-dim); }
+
+.canvas-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 4px;
+}
+.canvas-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.canvas-wrap .cv-label {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  padding-left: 2px;
+}
+.canvas-wrap canvas {
+  width: 100%;
+  aspect-ratio: 1;
+  image-rendering: pixelated;
+  border: 1px solid var(--border);
+  background: #000;
+  display: block;
+}
+
+.model-stats {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.stat-chip {
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  font-family: var(--mono);
+  font-size: 10px;
+  background: var(--bg2);
+}
+.stat-chip .sv { font-weight: 600; }
+.stat-chip.alive { border-color: var(--plus-dim); }
+.stat-chip.alive .sv { color: var(--plus); }
+.stat-chip.apop .sv { color: var(--apop); }
+.stat-chip.necro .sv { color: var(--necro); }
+.stat-chip.starve .sv { color: var(--starve); }
+
+/* ── CHART ── */
+.chart-area {
+  height: 200px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.chart-title {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.chart-wrap {
+  flex: 1;
+  min-height: 0;
+  border: 1px solid var(--border);
+  background: var(--bg2);
+  border-radius: 2px;
+  padding: 6px;
+  position: relative;
+  overflow: hidden;
+}
+.chart-wrap canvas { position: absolute; inset: 6px; }
+
+/* ── CELL STATE LEGEND ── */
+.cell-legend {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 8px;
+  padding: 3px 2px 0;
+  overflow: hidden;
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-family: var(--mono);
+  font-size: 8.5px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.legend-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* ── CHART TABS ── */
+
+/* ── CHART TABS ── */
+.chart-tabs-header {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.chart-tab-btn {
+  padding: 5px 14px;
+  font-family: var(--ui);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  margin-bottom: -1px;
+}
+.chart-tab-btn:hover { color: var(--text); }
+.chart-tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+.chart-tab-pane { display: none; flex: 1; min-height: 0; }
+.chart-tab-pane.active { display: flex; flex-direction: column; }
+
+/* ── INJECTION INDICATOR ── */
+.injection-badge {
+  display: none;
+  position: absolute;
+  top: 6px; right: 8px;
+  background: #1a0a00;
+  border: 1px solid var(--apop);
+  color: var(--apop);
+  font-family: var(--mono);
+  font-size: 9px;
+  padding: 2px 7px;
+  border-radius: 2px;
+  animation: fadein 0.3s;
+}
+@keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
+</style>
+</head>
+<body>
+
+<header class="app-header">
+  <div class="logo"><span>ABM</span> · Fungal Colony Simulator</div>
+  <div class="header-controls">
+    <button class="btn primary" id="btn-play">▶ Run</button>
+    <button class="btn" id="btn-step">Step ×1</button>
+    <button class="btn danger" id="btn-reset">↺ Reset</button>
+    <div class="speed-ctrl">
+      <label>Speed</label>
+      <input type="range" id="speed-range" min="1" max="30" value="5">
+      <span id="speed-val" style="font-family:var(--mono);font-size:11px;color:var(--text-hi);">5×</span>
+    </div>
+  </div>
+  <div class="status-bar">
+    <div class="status-item">Step <span id="stat-step">0</span></div>
+    <div class="status-item">Time <span id="stat-time">0.0 h</span></div>
+    <div class="status-item" id="stat-inject" style="color:var(--apop);display:none;">⚡ AF injected</div>
+  </div>
+</header>
+
+<div class="app-body">
+
+  <!-- ── PARAMETER SIDEBAR ── -->
+  <aside class="param-sidebar">
+    <div class="sidebar-title">Parameters</div>
+
+    <!-- Simulation -->
+    <div class="param-section">
+      <div class="param-section-head open" onclick="toggleSection(this)">Simulation <span class="arrow">▶</span></div>
+      <div class="param-section-body open">
+        <div class="param-row"><label>GRID_SIZE_PX</label><input type="number" id="p-GRID_SIZE_PX" value="100" min="30" max="200" step="10"></div>
+        <div class="param-row"><label>SIMULATION_STEPS</label><input type="number" id="p-SIMULATION_STEPS" value="600" min="50" max="2000" step="50"></div>
+        <div class="param-row"><label>INITIAL_CELLS</label><input type="number" id="p-INITIAL_CELLS" value="1" min="1" max="50"></div>
+        <div class="param-row"><label>TIME_STEP_DT</label><input type="number" id="p-TIME_STEP_DT" value="0.3333" min="0.05" max="1" step="0.01"></div>
+      </div>
+    </div>
+
+    <!-- Injection -->
+    <div class="param-section">
+      <div class="param-section-head" onclick="toggleSection(this)">Injection <span class="arrow">▶</span></div>
+      <div class="param-section-body">
+        <div class="param-row"><label>AF_INJECTION_STEP</label><input type="number" id="p-ANTIFUNGAL_INJECTION_STEP" value="1" min="0" max="1000"></div>
+        <div class="param-row"><label>AF_EXPOSURE_MODE</label>
+          <select id="p-ANTIFUNGAL_EXPOSURE_MODE">
+            <option value="SINGLE_SHOCK" selected>SINGLE_SHOCK</option>
+            <option value="CONTINUOUS">CONTINUOUS</option>
+            <option value="PULSATED">PULSATED</option>
+          </select>
+        </div>
+        <div class="param-row"><label>AF_PULSE_INTERVAL</label><input type="number" id="p-ANTIFUNGAL_PULSE_INTERVAL" value="100" min="5" max="500"></div>
+        <div class="param-row"><label>AF_SPATIAL_MODE</label>
+          <select id="p-ANTIFUNGAL_SPATIAL_MODE">
+            <option value="POINT_SOURCES" selected>POINT_SOURCES</option>
+            <option value="UNIFORM">UNIFORM</option>
+          </select>
+        </div>
+        <div class="param-row"><label>AF_SOURCE_DOSE</label><input type="number" id="p-ANTIFUNGAL_SOURCE_DOSE" value="100" min="1" max="100000"></div>
+        <div class="param-row"><label>AF_SOURCE_RADIUS</label><input type="number" id="p-ANTIFUNGAL_SOURCE_RADIUS" value="5" min="0" max="20"></div>
+        <div style="margin-bottom:4px;">
+          <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-bottom:3px;">AF_SOURCES <span style="color:var(--text-dim);font-size:9px;">(x,y pairs · semicolon separated)</span></div>
+          <input type="text" id="p-ANTIFUNGAL_SOURCES" value="100,40; 40,100; 40,40; 100,100"
+            style="width:100%;padding:3px 6px;background:var(--bg);border:1px solid var(--border);color:var(--text-hi);font-family:var(--mono);font-size:10px;border-radius:2px;outline:none;"
+            onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+        </div>
+        <div class="param-row"><label>INIT_AF_LEVEL (unif.)</label><input type="number" id="p-INIT_ANTIFUNGAL_LEVEL" value="5" min="0" max="50"></div>
+        <div class="param-row"><label>NUTRIENT_MODE</label>
+          <select id="p-NUTRIENT_EXPOSURE_MODE">
+            <option value="SINGLE_SHOCK" selected>SINGLE_SHOCK</option>
+            <option value="CONTINUOUS">CONTINUOUS</option>
+            <option value="PULSATED">PULSATED</option>
+          </select>
+        </div>
+        <div class="param-row"><label>NUTRIENT_INJ_STEP</label><input type="number" id="p-NUTRIENT_INJECTION_STEP" value="0" min="0" max="1000"></div>
+        <div class="param-row"><label>NUTRIENT_PULSE_INT</label><input type="number" id="p-NUTRIENT_PULSE_INTERVAL" value="36" min="5" max="500"></div>
+      </div>
+    </div>
+
+    <!-- Environment -->
+    <div class="param-section">
+      <div class="param-section-head" onclick="toggleSection(this)">Environment <span class="arrow">▶</span></div>
+      <div class="param-section-body">
+        <div class="param-row"><label>INIT_NUTRIENT</label><input type="number" id="p-INIT_NUTRIENT_LEVEL" value="12" min="1" max="100"></div>
+        <div class="param-row"><label>DIFFUSION_NUTRIENT</label><input type="number" id="p-DIFFUSION_NUTRIENT" value="0.57" min="0.01" max="5" step="0.01"></div>
+        <div class="param-row"><label>DIFFUSION_AF</label><input type="number" id="p-DIFFUSION_ANTIFUNGAL" value="0.3" min="0.01" max="5" step="0.01"></div>
+        <div class="param-row"><label>DIFFUSION_ITER</label><input type="number" id="p-DIFFUSION_ITERATIONS" value="10" min="2" max="30"></div>
+      </div>
+    </div>
+
+    <!-- Growth & Metabolism -->
+    <div class="param-section">
+      <div class="param-section-head" onclick="toggleSection(this)">Growth & Metabolism <span class="arrow">▶</span></div>
+      <div class="param-section-body">
+        <div class="param-row"><label>MU_MAX</label><input type="number" id="p-MU_MAX" value="0.7" min="0.01" max="5" step="0.01"></div>
+        <div class="param-row"><label>MONOD_KS</label><input type="number" id="p-MONOD_KS" value="5.0" min="0.1" max="50" step="0.1"></div>
+        <div class="param-row"><label>MAINTENANCE_COEFF</label><input type="number" id="p-MAINTENANCE_COEFF" value="0.015" min="0.001" max="0.5" step="0.001"></div>
+        <div class="param-row"><label>YIELD_TRUE</label><input type="number" id="p-YIELD_TRUE" value="0.39" min="0.01" max="1" step="0.01"></div>
+        <div class="param-row"><label>NEWBORN_BIOMASS</label><input type="number" id="p-NEWBORN_BIOMASS" value="1.0" min="0.1" max="5" step="0.1"></div>
+        <div class="param-row"><label>DIVISION_BIOMASS</label><input type="number" id="p-DIVISION_BIOMASS" value="2.0" min="0.5" max="10" step="0.1"></div>
+        <div class="param-row"><label>STARVATION_BIOMASS</label><input type="number" id="p-STARVATION_BIOMASS" value="0.75" min="0.01" max="2" step="0.01"></div>
+        <div class="param-row"><label>RESERVOIR_FRACTION</label><input type="number" id="p-RESERVOIR_FRACTION" value="0.1" min="0.01" max="1" step="0.01"></div>
+        <div class="param-row"><label>MAX_BIOMASS_PER_PX</label><input type="number" id="p-MAX_BIOMASS_PER_PX" value="3" min="1" max="10"></div>
+      </div>
+    </div>
+
+    <!-- Mechanics -->
+    <div class="param-section">
+      <div class="param-section-head" onclick="toggleSection(this)">Space & Mechanics <span class="arrow">▶</span></div>
+      <div class="param-section-body">
+        <div class="param-row"><label>PUSH_PROBABILITY</label><input type="number" id="p-PUSH_PROBABILITY" value="0.3" min="0" max="1" step="0.05"></div>
+        <div class="param-row"><label>MAX_PUSH_RADIUS</label><input type="number" id="p-MAX_PUSH_RADIUS" value="7" min="1" max="20"></div>
+      </div>
+    </div>
+
+    <!-- Antifungal Kinetics -->
+    <div class="param-section">
+      <div class="param-section-head" onclick="toggleSection(this)">AF Kinetics & Death <span class="arrow">▶</span></div>
+      <div class="param-section-body">
+        <div class="param-row"><label>MAX_BIND_LIVE</label><input type="number" id="p-MAX_ANTIFUNGAL_BINDING_LIVE" value="0.42" min="0" max="5" step="0.01"></div>
+        <div class="param-row"><label>MAX_BIND_DEAD_APOP</label><input type="number" id="p-MAX_ANTIFUNGAL_BINDING_DEAD_APOP" value="2.5" min="0" max="10" step="0.1"></div>
+        <div class="param-row"><label>MAX_BIND_DEAD_NECRO</label><input type="number" id="p-MAX_ANTIFUNGAL_BINDING_DEAD_NECRO" value="0.42" min="0" max="5" step="0.01"></div>
+        <div class="param-row"><label>K_ON_ANTIFUNGAL</label><input type="number" id="p-K_ON_ANTIFUNGAL" value="0.01" min="0" max="1" step="0.001"></div>
+        <div class="param-row"><label>K_OFF_ANTIFUNGAL</label><input type="number" id="p-K_OFF_ANTIFUNGAL" value="0.005" min="0" max="1" step="0.001"></div>
+        <div class="param-row"><label>DAMAGE_THRESHOLD</label><input type="number" id="p-ANTIFUNGAL_DAMAGE_THRESHOLD" value="0.3" min="0" max="20" step="0.01"></div>
+        <div class="param-row"><label>FUNGISTATIC_THRESH</label><input type="number" id="p-FUNGISTATIC_THRESHOLD" value="0.5" min="0" max="20" step="0.01"></div>
+        <div class="param-row"><label>RESUSCITATION_THRESH</label><input type="number" id="p-RESUSCITATION_THRESHOLD" value="1.0" min="0" max="20" step="0.01"></div>
+        <div class="param-row"><label>APOPTOSIS_DURATION</label><input type="number" id="p-APOPTOSIS_DURATION" value="2.0" min="0.1" max="20" step="0.1"></div>
+        <div class="param-row"><label>APOPTOSIS_LEAK_RATE</label><input type="number" id="p-APOPTOSIS_LEAK_RATE" value="0.5" min="0" max="5" step="0.05"></div>
+        <div class="param-row"><label>TOTAL_DEATH_MAX</label><input type="number" id="p-TOTAL_DEATH_MAX" value="0.999" min="0.01" max="1" step="0.001"></div>
+        <div class="param-row"><label>TOTAL_DEATH_STEEP</label><input type="number" id="p-TOTAL_DEATH_STEEPNESS" value="0.8" min="0.01" max="5" step="0.01"></div>
+        <div class="param-row"><label>TOTAL_DEATH_C50</label><input type="number" id="p-TOTAL_DEATH_C50" value="2.5" min="0.1" max="20" step="0.1"></div>
+        <div class="param-row"><label>NECRO_SLOPE</label><input type="number" id="p-NECRO_SLOPE" value="0.056571" min="0" max="1" step="0.001"></div>
+        <div class="param-row"><label>NECRO_INTERCEPT</label><input type="number" id="p-NECRO_INTERCEPT" value="-0.036" min="-1" max="1" step="0.001"></div>
+        <div class="param-row"><label>ASSAY_DURATION_H</label><input type="number" id="p-ASSAY_DURATION_HOURS" value="3.333" min="0.1" max="20" step="0.1"></div>
+      </div>
+    </div>
+
+    <div class="sidebar-apply">
+      <button class="btn danger" onclick="applyAndReset()" style="width:100%">Apply & Reset Simulation</button>
+    </div>
+  </aside>
+
+  <!-- ── SIM AREA ── -->
+  <div class="sim-area">
+
+    <div class="models-row">
+
+      <!-- PCD+ -->
+      <div class="model-view">
+        <div class="model-label">
+          <div class="dot" style="background:var(--plus)"></div>
+          <span style="color:var(--plus);font-size:13px;">PCD+</span>
+          <span class="tag">Programmed Cell Death · Apoptosis capable</span>
+        </div>
+        <div class="canvas-grid">
+          <div class="canvas-wrap"><div class="cv-label">Nutrients</div><canvas id="cv-plus-n"></canvas></div>
+          <div class="canvas-wrap"><div class="cv-label">Antifungal</div><canvas id="cv-plus-f"></canvas></div>
+          <div class="canvas-wrap">
+            <div class="cv-label">Cell States</div>
+            <canvas id="cv-plus-c"></canvas>
+          </div>
+          <div class="canvas-wrap"><div class="cv-label">Biomass Density</div><canvas id="cv-plus-b"></canvas></div>
+        </div>
+        <div class="cell-legend">
+          <div class="legend-item"><div class="legend-dot" style="background:#4d9fff"></div>Alive PCD+</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#b4d250"></div>Zombie</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#ffaa00"></div>Apoptotic</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#555"></div>Dead (Apop)</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#999"></div>Dead (Necro)</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#cc44ff"></div>Dead (Starve)</div>
+        </div>
+        <div class="model-stats" id="stats-plus"></div>
+      </div>
+
+      <!-- PCD- -->
+      <div class="model-view">
+        <div class="model-label">
+          <div class="dot" style="background:var(--minus)"></div>
+          <span style="color:var(--minus);font-size:13px;">PCD−</span>
+          <span class="tag">PCD-deficient · Necrosis only</span>
+        </div>
+        <div class="canvas-grid">
+          <div class="canvas-wrap"><div class="cv-label">Nutrients</div><canvas id="cv-minus-n"></canvas></div>
+          <div class="canvas-wrap"><div class="cv-label">Antifungal</div><canvas id="cv-minus-f"></canvas></div>
+          <div class="canvas-wrap">
+            <div class="cv-label">Cell States</div>
+            <canvas id="cv-minus-c"></canvas>
+          </div>
+          <div class="canvas-wrap"><div class="cv-label">Biomass Density</div><canvas id="cv-minus-b"></canvas></div>
+        </div>
+        <div class="cell-legend">
+          <div class="legend-item"><div class="legend-dot" style="background:#ff5566"></div>Alive PCD−</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#b4d250"></div>Zombie</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#999"></div>Dead (Necro)</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#cc44ff"></div>Dead (Starve)</div>
+        </div>
+        <div class="model-stats" id="stats-minus"></div>
+      </div>
+    </div>
+
+    <!-- Tabbed Chart Panel -->
+    <div class="chart-area">
+      <div class="chart-tabs-header">
+        <button class="chart-tab-btn active" onclick="switchTab('alive', this)">Alive Cells</button>
+        <button class="chart-tab-btn" onclick="switchTab('dead', this)">Dead Cells</button>
+      </div>
+
+      <!-- Tab: Alive -->
+      <div class="chart-tab-pane active" id="tab-alive">
+        <div class="chart-wrap" style="position:relative;">
+          <canvas id="pop-chart"></canvas>
+          <div class="injection-badge" id="inject-badge">⚡ AF Injected</div>
+        </div>
+      </div>
+
+      <!-- Tab: Dead -->
+      <div class="chart-tab-pane" id="tab-dead">
+        <div class="chart-wrap" style="position:relative;">
+          <canvas id="dead-chart"></canvas>
+          <div class="injection-badge" id="inject-badge-dead">⚡ AF Injected</div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /sim-area -->
+</div><!-- /app-body -->
+
+<script>
+'use strict';
+
+// =============================================
+// COLOR MAPS
+// =============================================
+function interpRGB(c1, c2, t) {
+  return [
+    Math.round(c1[0] + t*(c2[0]-c1[0])),
+    Math.round(c1[1] + t*(c2[1]-c1[1])),
+    Math.round(c1[2] + t*(c2[2]-c1[2])),
+  ];
+}
+function colorScale(stops, t) {
+  t = Math.max(0, Math.min(1, t));
+  const n = stops.length - 1;
+  const i = Math.min(Math.floor(t * n), n - 1);
+  return interpRGB(stops[i], stops[i+1], t * n - i);
+}
+const VIRIDIS = [[68,1,84],[59,82,139],[33,144,140],[94,201,98],[253,231,37]];
+const ICE     = [[215,249,255],[130,210,240],[35,150,220],[0,80,160],[1,20,80]];
+const BIOMASS_GRAD = [[5,10,18],[0,80,20],[180,140,0],[210,60,0]];
+
+// =============================================
+// SIMULATION CLASS
+// =============================================
+class Simulation {
+  constructor(isPCDPlus, params) {
+    this.isPCDPlus = isPCDPlus;
+    this.P = params;
+    this.W = params.GRID_SIZE_PX;
+    this.H = params.GRID_SIZE_PX;
+    const N = this.W * this.H;
+    this.allCells = [];     // indexed by id, may have gaps (dead cells stay)
+    this.cellsAtPos = new Array(N).fill(null).map(() => []);
+    this.nutrient   = new Float32Array(N);
+    this.antifungal = new Float32Array(N);
+    this.tmpBuf     = new Float32Array(N);
+    this.stepCount  = 0;
+    this.totalLostNutrients = 0;
+    this.history    = { alive:[], deadApop:[], deadNecro:[], deadStarve:[], total:[] };
+    this._imgBuf    = null; // lazily created ImageData buffer
+  }
+
+  reset(startingPositions) {
+    const N = this.W * this.H;
+    this.allCells = [];
+    this.cellsAtPos = new Array(N).fill(null).map(() => []);
+    this.nutrient.fill(this.P.INIT_NUTRIENT_LEVEL);
+    this.antifungal.fill(0);
+    this.stepCount = 0;
+    this.totalLostNutrients = 0;
+    this.history = { alive:[], deadApop:[], deadNecro:[], deadStarve:[], total:[] };
+    const initInternal = this.P.NEWBORN_BIOMASS * this.P.RESERVOIR_FRACTION;
+    for (const [x, y] of startingPositions) {
+      this._addCell(x, y, this.P.NEWBORN_BIOMASS, initInternal, 0);
+    }
+    this._recordHistory();
+  }
+
+  _addCell(x, y, biomass, internalNutrients, boundAntifungal) {
+    const id = this.allCells.length;
+    const cell = {
+      id, x, y,
+      alive: true,
+      biomass,
+      internalNutrients,
+      boundAntifungal: boundAntifungal || 0,
+      isApoptotic: false,
+      apoptosisTimer: 0,
+      antifungalExposureTime: 0,
+      deadApoptosis: false,
+      deadNecrosis: false,
+      deadStarvation: false,
+    };
+    this.allCells.push(cell);
+    this.cellsAtPos[y * this.W + x].push(id);
+    return id;
+  }
+
+  getBiomassAt(x, y) {
+    const ids = this.cellsAtPos[y * this.W + x];
+    let total = 0;
+    for (let k = 0; k < ids.length; k++) total += this.allCells[ids[k]].biomass;
+    return total;
+  }
+
+  _getDeathRates(c) {
+    const P = this.P;
+    if (c < P.ANTIFUNGAL_DAMAGE_THRESHOLD) return [0, 0];
+    const totalDeath = P.TOTAL_DEATH_MAX / (1 + Math.exp(-P.TOTAL_DEATH_STEEPNESS * (c - P.TOTAL_DEATH_C50)));
+    const necroRaw = P.NECRO_SLOPE * c + P.NECRO_INTERCEPT;
+    const targetNecro = Math.max(0, Math.min(necroRaw, totalDeath));
+    const targetApop  = totalDeath - targetNecro;
+    const targetTotal = Math.min(0.999, totalDeath);
+    if (targetTotal <= 0.01) return [0, 0];
+    const hourlyTotal = -Math.log(1 - targetTotal) / P.ASSAY_DURATION_HOURS;
+    return [hourlyTotal * (targetApop / totalDeath), hourlyTotal * (targetNecro / totalDeath)];
+  }
+
+  _applyStress(cell) {
+    const P = this.P;
+    const idx = cell.y * this.W + cell.x;
+    const localF = this.antifungal[idx];
+
+    if (localF >= P.ANTIFUNGAL_DAMAGE_THRESHOLD) {
+      cell.antifungalExposureTime += P.TIME_STEP_DT;
+    }
+
+    if (this.isPCDPlus && cell.isApoptotic) {
+      // --- RESUSCITATION: if drug drops below threshold, abort apoptosis and recover ---
+      if (localF < P.RESUSCITATION_THRESHOLD) {
+        cell.isApoptotic = false;
+        cell.apoptosisTimer = 0;
+      } else {
+        cell.apoptosisTimer += P.TIME_STEP_DT;
+        const leakFrac = Math.min(1, P.APOPTOSIS_LEAK_RATE * P.TIME_STEP_DT);
+        const leakAmt  = cell.internalNutrients * leakFrac;
+        cell.internalNutrients -= leakAmt;
+        this.nutrient[idx] += leakAmt;
+        if (cell.apoptosisTimer >= P.APOPTOSIS_DURATION) {
+          cell.alive = false;
+          cell.isApoptotic = false;
+          cell.deadApoptosis = true;
+          this.nutrient[idx] += cell.internalNutrients;
+          cell.internalNutrients = 0;
+        }
+      }
+    } else {
+      if (cell.antifungalExposureTime >= P.STRESS_START_TIME) {
+        const [rateApop, rateNecro] = this._getDeathRates(localF);
+        const totalRate = rateApop + rateNecro;
+        if (totalRate > 0) {
+          const probDeath = 1 - Math.exp(-totalRate * P.TIME_STEP_DT);
+          if (Math.random() < probDeath) {
+            if (this.isPCDPlus && Math.random() < rateApop / totalRate) {
+              cell.isApoptotic = true;
+            } else {
+              cell.alive = false;
+              cell.deadNecrosis = true;
+              this.nutrient[idx]   += cell.internalNutrients;
+              this.antifungal[idx] += cell.boundAntifungal;
+              cell.internalNutrients = 0;
+              cell.boundAntifungal   = 0;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  _diffuse(u, alpha) {
+    const W = this.W, H = this.H;
+    const tmp = this.tmpBuf;
+    const ITER = this.P.DIFFUSION_ITERATIONS;
+    const sub  = alpha / ITER;
+    const c4 = 2/3, c8 = 1/6, cc = -10/3;
+
+    for (let iter = 0; iter < ITER; iter++) {
+      for (let y = 0; y < H; y++) {
+        const ym = y > 0 ? y-1 : 0, yp = y < H-1 ? y+1 : H-1;
+        const rc = y*W, ru = ym*W, rd = yp*W;
+        for (let x = 0; x < W; x++) {
+          const xm = x > 0 ? x-1 : 0, xp = x < W-1 ? x+1 : W-1;
+          const lap =
+            c8*(u[ru+xm] + u[ru+xp] + u[rd+xm] + u[rd+xp]) +
+            c4*(u[ru+x]  + u[rd+x]  + u[rc+xm] + u[rc+xp]) +
+            cc * u[rc+x];
+          const val = u[rc+x] + sub * lap;
+          tmp[rc+x] = val < 0 ? 0 : val;
+        }
+      }
+      u.set(tmp);
+    }
+  }
+
+  _findDivisionSpot(cell, plannedBiomass) {
+    const P = this.P, W = this.W, H = this.H;
+    const {x, y} = cell;
+
+    const getPB = (px, py) => plannedBiomass.get(py*W+px) || 0;
+
+    // Build immediate hood (radius 1)
+    const hood = [];
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      const nx = x+dx, ny = y+dy;
+      if (nx >= 0 && nx < W && ny >= 0 && ny < H) {
+        const totalB = this.getBiomassAt(nx, ny) + getPB(nx, ny);
+        hood.push({x:nx, y:ny, bio:totalB});
+      }
+    }
+
+    const avail = hood.filter(s => s.bio + P.NEWBORN_BIOMASS <= P.MAX_BIOMASS_PER_PX);
+
+    if (avail.length > 0) {
+      const empty = avail.filter(s => s.bio === 0);
+      const pool = empty.length > 0 ? empty : avail;
+
+      // Surface-tension weighting
+      const wts = pool.map(s => {
+        let occ = 0;
+        for (let dy2 = -1; dy2 <= 1; dy2++) for (let dx2 = -1; dx2 <= 1; dx2++) {
+          if (dx2 === 0 && dy2 === 0) continue;
+          const nx = s.x+dx2, ny = s.y+dy2;
+          if (nx >= 0 && nx < W && ny >= 0 && ny < H)
+            if ((this.getBiomassAt(nx, ny) + getPB(nx, ny)) > 0) occ++;
+        }
+        return occ*occ*occ + 1;
+      });
+      return this._weightedSample(pool, wts);
+    }
+
+    // Push mechanics
+    if (Math.random() < P.PUSH_PROBABILITY) {
+      const R = P.MAX_PUSH_RADIUS;
+      const candidates = [];
+      for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) {
+        const nx = x+dx, ny = y+dy;
+        if (nx < 0 || nx >= W || ny < 0 || ny >= H) continue;
+        const b = this.getBiomassAt(nx, ny) + getPB(nx, ny);
+        if (b + P.NEWBORN_BIOMASS <= P.MAX_BIOMASS_PER_PX)
+          candidates.push({x:nx, y:ny, dist2:dx*dx+dy*dy, cap: P.MAX_BIOMASS_PER_PX - b});
+      }
+      if (candidates.length > 0) {
+        const minD = Math.min(...candidates.map(c => c.dist2));
+        const best = candidates.filter(c => c.dist2 <= minD + 2);
+        return this._weightedSample(best, best.map(c => c.cap));
+      }
+    }
+    return null;
+  }
+
+  _weightedSample(pool, weights) {
+    const total = weights.reduce((a, b) => a+b, 0);
+    let r = Math.random() * total;
+    for (let i = 0; i < pool.length; i++) {
+      r -= weights[i];
+      if (r <= 0) return pool[i];
+    }
+    return pool[pool.length - 1];
+  }
+
+  _recordHistory() {
+    let alive = 0, deadApop = 0, deadNecro = 0, deadStarve = 0, total = 0;
+    for (let i = 0; i < this.allCells.length; i++) {
+      const c = this.allCells[i];
+      total++;
+      if (c.alive) alive++;
+      else if (c.deadApoptosis) deadApop++;
+      else if (c.deadNecrosis) deadNecro++;
+      else if (c.deadStarvation) deadStarve++;
+    }
+    this.history.alive.push(alive);
+    this.history.deadApop.push(deadApop);
+    this.history.deadNecro.push(deadNecro);
+    this.history.deadStarve.push(deadStarve);
+    this.history.total.push(total);
+  }
+
+  step() {
+    const P = this.P, W = this.W, H = this.H;
+    const step = this.stepCount + 1;
+
+    // ── Injection logic ──
+    const checkInject = (mode, injStep, pulseInt, step) => {
+      if (mode === 'SINGLE_SHOCK') return step === injStep;
+      if (mode === 'CONTINUOUS')   return step >= injStep;
+      if (mode === 'PULSATED')     return step >= injStep && (step - injStep) % pulseInt === 0;
+      return false;
+    };
+
+    if (checkInject(P.NUTRIENT_EXPOSURE_MODE, P.NUTRIENT_INJECTION_STEP, P.NUTRIENT_PULSE_INTERVAL, step)) {
+      this.nutrient.fill(P.INIT_NUTRIENT_LEVEL);
+    }
+
+    if (checkInject(P.ANTIFUNGAL_EXPOSURE_MODE, P.ANTIFUNGAL_INJECTION_STEP, P.ANTIFUNGAL_PULSE_INTERVAL, step)) {
+      if (P.ANTIFUNGAL_SPATIAL_MODE === 'UNIFORM') {
+        this.antifungal.fill(P.INIT_ANTIFUNGAL_LEVEL);
+      } else {
+        for (const [sx, sy] of P.ANTIFUNGAL_SOURCES) {
+          const R = P.ANTIFUNGAL_SOURCE_RADIUS;
+          for (let dx = -R; dx <= R; dx++) {
+            for (let dy = -R; dy <= R; dy++) {
+              const px = sx - 1 + dx, py = sy - 1 + dy;
+              if (px >= 0 && px < W && py >= 0 && py < H) {
+                this.antifungal[py*W+px] += P.ANTIFUNGAL_SOURCE_DOSE;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // ── Pass 1: Calculate demands ──
+    const nDemands = new Float32Array(this.allCells.length);
+    const fDemands = new Float32Array(this.allCells.length);
+    const fReleases= new Float32Array(this.allCells.length);
+
+    for (let i = 0; i < this.allCells.length; i++) {
+      const cell = this.allCells[i];
+      const idx = cell.y * W + cell.x;
+
+      if (cell.alive) {
+        const localN = this.nutrient[idx];
+        const localF = this.antifungal[idx];
+        const maxRes = cell.biomass * P.RESERVOIR_FRACTION;
+        let resDef = Math.max(0, maxRes - cell.internalNutrients);
+        let growthD = 0;
+        if (!cell.isApoptotic) {
+          if (localF >= P.FUNGISTATIC_THRESHOLD) {
+            // Zombie/fungistatic state: growth and reservoir stockpiling halted
+            growthD = 0;
+            resDef  = 0;
+          } else if (cell.biomass < P.DIVISION_BIOMASS) {
+            const mu = P.MU_MAX * (localN / (P.MONOD_KS + localN));
+            growthD = Math.min(mu * cell.biomass * P.TIME_STEP_DT, P.DIVISION_BIOMASS - cell.biomass) / P.YIELD_TRUE;
+          }
+        }
+        const maint = P.MAINTENANCE_COEFF * cell.biomass * P.TIME_STEP_DT;
+        nDemands[i] = growthD + maint + resDef;
+      }
+
+      // Antifungal binding for all cells
+      const localF = this.antifungal[idx];
+      const maxBind = cell.alive ? P.MAX_ANTIFUNGAL_BINDING_LIVE
+                     : cell.deadApoptosis ? P.MAX_ANTIFUNGAL_BINDING_DEAD_APOP
+                     : P.MAX_ANTIFUNGAL_BINDING_DEAD_NECRO;
+      const capRem = Math.max(0, maxBind - cell.boundAntifungal);
+      const net = (P.K_ON_ANTIFUNGAL * localF * capRem - P.K_OFF_ANTIFUNGAL * cell.boundAntifungal) * P.TIME_STEP_DT;
+      if (net > 0) fDemands[i] = net;
+      else         fReleases[i] = Math.min(-net, cell.boundAntifungal);
+    }
+
+    // ── Pass 2: Allocate & Update (shuffled) ──
+    const newborns = [];
+    const plannedBiomass = new Map(); // pos key -> float
+
+    // Fisher-Yates shuffle of indices
+    const order = new Int32Array(this.allCells.length);
+    for (let i = 0; i < order.length; i++) order[i] = i;
+    for (let i = order.length - 1; i > 0; i--) {
+      const j = (Math.random() * (i + 1)) | 0;
+      const tmp = order[i]; order[i] = order[j]; order[j] = tmp;
+    }
+
+    for (let oi = 0; oi < order.length; oi++) {
+      const i = order[oi];
+      const cell = this.allCells[i];
+      const idx = cell.y * W + cell.x;
+
+      // Stress
+      if (cell.alive) this._applyStress(cell);
+
+      // Nutrient metabolism
+      if (cell.alive && nDemands[i] > 0) {
+        const actual = Math.min(nDemands[i], this.nutrient[idx]);
+        this.nutrient[idx] -= actual;
+        cell.internalNutrients += actual;
+
+        const maint = P.MAINTENANCE_COEFF * cell.biomass * P.TIME_STEP_DT;
+
+        if (cell.isApoptotic) {
+          const burn = Math.min(cell.internalNutrients, maint);
+          cell.internalNutrients -= burn;
+          this.totalLostNutrients += burn;
+        } else {
+          if (cell.internalNutrients >= maint) {
+            cell.internalNutrients -= maint;
+            this.totalLostNutrients += maint;
+            // Only grow if not under fungistatic arrest
+            const localFG = this.antifungal[idx];
+            if (localFG < P.FUNGISTATIC_THRESHOLD && cell.biomass < P.DIVISION_BIOMASS) {
+              const maxGB = Math.min(P.MU_MAX * cell.biomass * P.TIME_STEP_DT, P.DIVISION_BIOMASS - cell.biomass);
+              const gN = Math.min(cell.internalNutrients, maxGB / P.YIELD_TRUE);
+              cell.biomass += gN * P.YIELD_TRUE;
+              cell.internalNutrients -= gN;
+            }
+          } else {
+            const deficit = maint - cell.internalNutrients;
+            this.totalLostNutrients += cell.internalNutrients;
+            cell.internalNutrients = 0;
+            cell.biomass -= deficit * P.YIELD_TRUE;
+            this.totalLostNutrients += deficit;
+            if (cell.biomass <= P.STARVATION_BIOMASS) {
+              cell.alive = false;
+              cell.deadStarvation = true;
+              this.antifungal[idx] += cell.boundAntifungal;
+              cell.boundAntifungal = 0;
+            }
+          }
+
+          if (cell.alive) {
+            // Cap reservoir
+            const maxRes = cell.biomass * P.RESERVOIR_FRACTION;
+            if (cell.internalNutrients > maxRes) {
+              this.nutrient[idx] += cell.internalNutrients - maxRes;
+              cell.internalNutrients = maxRes;
+            }
+            // Division
+            if (cell.biomass >= P.DIVISION_BIOMASS) {
+              const spot = this._findDivisionSpot(cell, plannedBiomass);
+              if (spot !== null) {
+                cell.biomass -= P.NEWBORN_BIOMASS;
+                const df = P.NEWBORN_BIOMASS / (cell.biomass + P.NEWBORN_BIOMASS);
+                const dn = cell.internalNutrients * df;
+                cell.internalNutrients -= dn;
+                const key = spot.y * W + spot.x;
+                plannedBiomass.set(key, (plannedBiomass.get(key)||0) + P.NEWBORN_BIOMASS);
+                newborns.push([spot.x, spot.y, P.NEWBORN_BIOMASS, dn]);
+              } else {
+                this.totalLostNutrients += (cell.biomass - P.DIVISION_BIOMASS) / P.YIELD_TRUE;
+                cell.biomass = P.DIVISION_BIOMASS;
+              }
+            }
+          }
+        }
+      }
+
+      // Antifungal binding
+      if (fDemands[i] > 0) {
+        const bind = Math.min(fDemands[i], this.antifungal[idx]);
+        cell.boundAntifungal += bind;
+        this.antifungal[idx] -= bind;
+      } else if (fReleases[i] > 0) {
+        cell.boundAntifungal  -= fReleases[i];
+        this.antifungal[idx]  += fReleases[i];
+      }
+    }
+
+    // ── Spawn newborns ──
+    for (const [x, y, b, n] of newborns) {
+      if (this.getBiomassAt(x, y) + b <= P.MAX_BIOMASS_PER_PX + 0.01) {
+        this._addCell(x, y, b, n, 0);
+      } else {
+        this.totalLostNutrients += b / P.YIELD_TRUE + n;
+      }
+    }
+
+    // ── Diffusion ──
+    this._diffuse(this.nutrient,   P.DIFFUSION_NUTRIENT   * P.TIME_STEP_DT);
+    this._diffuse(this.antifungal, P.DIFFUSION_ANTIFUNGAL * P.TIME_STEP_DT);
+
+    this.stepCount++;
+    this._recordHistory();
+  }
+
+  getCounts() {
+    const h = this.history, n = h.alive.length - 1;
+    return { alive: h.alive[n]||0, deadApop: h.deadApop[n]||0, deadNecro: h.deadNecro[n]||0, deadStarve: h.deadStarve[n]||0, total: h.total[n]||0 };
+  }
+}
+
+// =============================================
+// RENDERING
+// =============================================
+function getImageData(canvas) {
+  const ctx = canvas.getContext('2d');
+  return ctx.createImageData(canvas.width, canvas.height);
+}
+
+function flushImageData(canvas, imgData) {
+  canvas.getContext('2d').putImageData(imgData, 0, 0);
+}
+
+function drawHeatmap(canvas, data, W, H, colorFn, maxVal) {
+  const imgData = getImageData(canvas);
+  const d = imgData.data;
+  for (let i = 0; i < W*H; i++) {
+    const t = data[i] / maxVal;
+    const [r, g, b] = colorFn(t);
+    const p = i * 4;
+    d[p] = r; d[p+1] = g; d[p+2] = b; d[p+3] = 255;
+  }
+  flushImageData(canvas, imgData);
+}
+
+function drawNutrient(canvas, sim) {
+  drawHeatmap(canvas, sim.nutrient, sim.W, sim.H,
+    t => colorScale(VIRIDIS, t), sim.P.INIT_NUTRIENT_LEVEL);
+}
+
+function drawAntifungal(canvas, sim) {
+  let fmax = sim.P.INIT_ANTIFUNGAL_LEVEL;
+  let mx = 0;
+  for (let i = 0; i < sim.antifungal.length; i++) if (sim.antifungal[i] > mx) mx = sim.antifungal[i];
+  if (mx > fmax) fmax = mx;
+  if (fmax < 0.01) fmax = 0.01;
+  drawHeatmap(canvas, sim.antifungal, sim.W, sim.H,
+    t => colorScale(ICE, t), fmax);
+}
+
+function drawCells(canvas, sim, isPCDPlus) {
+  const W = sim.W, H = sim.H;
+  const imgData = getImageData(canvas);
+  const d = imgData.data;
+  // Black background
+  for (let i = 0; i < W*H*4; i += 4) { d[i]=5; d[i+1]=10; d[i+2]=18; d[i+3]=255; }
+
+  for (let k = 0; k < sim.allCells.length; k++) {
+    const cell = sim.allCells[k];
+    let r, g, b;
+    if (cell.alive && !cell.isApoptotic) {
+      const localF = sim.antifungal[cell.y * W + cell.x];
+      if (localF >= sim.P.FUNGISTATIC_THRESHOLD) {
+        r=180; g=210; b=80; // zombie: yellow-green
+      } else if (isPCDPlus) { r=77; g=159; b=255; }
+      else                  { r=255; g=85; b=102; }
+    } else if (cell.alive && cell.isApoptotic) {
+      r=255; g=170; b=0;
+    } else if (cell.deadApoptosis) {
+      r=80; g=80; b=85;
+    } else if (cell.deadNecrosis) {
+      r=140; g=140; b=140;
+    } else if (cell.deadStarvation) {
+      r=180; g=60; b=255;
+    } else continue;
+
+    const px = (cell.y * W + cell.x) * 4;
+    // Blend (accumulate for multi-cell positions)
+    d[px]   = Math.min(255, d[px]   + r);
+    d[px+1] = Math.min(255, d[px+1] + g);
+    d[px+2] = Math.min(255, d[px+2] + b);
+  }
+  flushImageData(canvas, imgData);
+}
+
+function drawBiomass(canvas, sim) {
+  const W = sim.W, H = sim.H;
+  const density = new Float32Array(W * H);
+  for (let k = 0; k < sim.allCells.length; k++) {
+    const c = sim.allCells[k];
+    density[c.y*W+c.x] += c.biomass;
+  }
+  drawHeatmap(canvas, density, W, H, t => colorScale(BIOMASS_GRAD, t), sim.P.MAX_BIOMASS_PER_PX);
+}
+
+function updateStats(sim, el, isPCDPlus) {
+  const c = sim.getCounts();
+  const pct = c.total > 0 ? ((c.alive/c.total)*100).toFixed(0) : 0;
+  const col = isPCDPlus ? 'var(--plus)' : 'var(--minus)';
+  el.innerHTML = `
+    <div class="stat-chip alive"><span class="sv" style="color:${col}">${c.alive}</span> alive (${pct}%)</div>
+    <div class="stat-chip apop"><span class="sv">${isPCDPlus ? c.deadApop : '—'}</span> apoptotic</div>
+    <div class="stat-chip necro"><span class="sv">${c.deadNecro}</span> necrotic</div>
+    <div class="stat-chip starve"><span class="sv">${c.deadStarve}</span> starved</div>
+    <div class="stat-chip"><span class="sv" style="color:var(--text)">${c.total}</span> total</div>
+  `;
+}
+
+function renderAll() {
+  drawNutrient(cvPlusN, simPlus);
+  drawAntifungal(cvPlusF, simPlus);
+  drawCells(cvPlusC, simPlus, true);
+  drawBiomass(cvPlusB, simPlus);
+
+  drawNutrient(cvMinusN, simMinus);
+  drawAntifungal(cvMinusF, simMinus);
+  drawCells(cvMinusC, simMinus, false);
+  drawBiomass(cvMinusB, simMinus);
+
+  updateStats(simPlus,  document.getElementById('stats-plus'),  true);
+  updateStats(simMinus, document.getElementById('stats-minus'), false);
+
+  const step = simPlus.stepCount;
+  document.getElementById('stat-step').textContent = step;
+  document.getElementById('stat-time').textContent = (step * P.TIME_STEP_DT).toFixed(1) + ' h';
+
+  // Antifungal injection indicator (both chart tabs)
+  const injAt = P.ANTIFUNGAL_INJECTION_STEP;
+  const show = step >= injAt && step <= injAt + 10;
+  document.getElementById('inject-badge').style.display      = show ? 'block' : 'none';
+  document.getElementById('inject-badge-dead').style.display = show ? 'block' : 'none';
+}
+
+// =============================================
+// CHART
+// =============================================
+let chart, chartDead;
+
+function switchTab(name, btn) {
+  document.querySelectorAll('.chart-tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.chart-tab-pane').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('tab-' + name).classList.add('active');
+}
+
+function initChart() {
+  const sharedOpts = {
+    animation: false,
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: { mode:'index', intersect:false },
+    scales: {
+      x: {
+        title: { display:true, text:'Time (hours)', color:'#3a7090', font:{family:"'JetBrains Mono', monospace",size:10} },
+        ticks: { color:'#3a7090', font:{family:"'JetBrains Mono', monospace",size:9}, maxTicksLimit:15 },
+        grid: { color:'#12243a' }
+      },
+      y: {
+        title: { display:true, text:'Cell Count', color:'#3a7090', font:{family:"'JetBrains Mono', monospace",size:10} },
+        ticks: { color:'#3a7090', font:{family:"'JetBrains Mono', monospace",size:9} },
+        grid: { color:'#12243a' },
+        beginAtZero: true
+      }
+    },
+    plugins: {
+      legend: { labels: { color:'#5a9abc', boxWidth:16, font:{family:"'JetBrains Mono', monospace",size:10}, padding:10 } },
+      tooltip: { backgroundColor:'#091420', borderColor:'#1c3550', borderWidth:1 }
+    }
+  };
+
+  Chart.defaults.color = '#3a6080';
+
+  // Alive chart
+  chart = new Chart(document.getElementById('pop-chart').getContext('2d'), {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [
+        { label: 'PCD+ Alive', data:[], borderColor:'#4d9fff', borderWidth:2, fill:false, pointRadius:0, tension:0 },
+        { label: 'PCD− Alive', data:[], borderColor:'#ff5566', borderWidth:2, fill:false, pointRadius:0, tension:0 },
+      ]
+    },
+    options: JSON.parse(JSON.stringify(sharedOpts))
+  });
+
+  // Dead cells chart
+  chartDead = new Chart(document.getElementById('dead-chart').getContext('2d'), {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [
+        { label: 'PCD+ Apoptotic', data:[], borderColor:'#ffaa00', borderWidth:2, fill:false, pointRadius:0, tension:0 },
+        { label: 'PCD+ Necrotic',  data:[], borderColor:'#8a8a8a', borderWidth:2, fill:false, pointRadius:0, tension:0 },
+        { label: 'PCD− Necrotic',  data:[], borderColor:'#555',    borderWidth:2, borderDash:[5,3], fill:false, pointRadius:0, tension:0 },
+        { label: 'PCD+ Starved',   data:[], borderColor:'#cc44ff', borderWidth:2, fill:false, pointRadius:0, tension:0 },
+        { label: 'PCD− Starved',   data:[], borderColor:'#882299', borderWidth:2, borderDash:[5,3], fill:false, pointRadius:0, tension:0 },
+      ]
+    },
+    options: JSON.parse(JSON.stringify(sharedOpts))
+  });
+}
+
+let lastChartStep = 0;
+
+function updateChart() {
+  const hp = simPlus.history, hm = simMinus.history;
+  const currentStep = simPlus.stepCount;
+
+  // Fill in every step since last chart update (handles spf > 1 correctly)
+  const fromStep = Math.max(0, lastChartStep + 1);
+  for (let s = fromStep; s <= currentStep; s++) {
+    const timeHr = (s * P.TIME_STEP_DT).toFixed(2);
+
+    chart.data.labels.push(timeHr);
+    chart.data.datasets[0].data.push(hp.alive[s]    ?? 0);
+    chart.data.datasets[1].data.push(hm.alive[s]    ?? 0);
+
+    chartDead.data.labels.push(timeHr);
+    chartDead.data.datasets[0].data.push(hp.deadApop[s]  ?? 0);
+    chartDead.data.datasets[1].data.push(hp.deadNecro[s] ?? 0);
+    chartDead.data.datasets[2].data.push(hm.deadNecro[s] ?? 0);
+    chartDead.data.datasets[3].data.push(hp.deadStarve[s]?? 0);
+    chartDead.data.datasets[4].data.push(hm.deadStarve[s]?? 0);
+  }
+
+  lastChartStep = currentStep;
+  chart.update('none');
+  chartDead.update('none');
+}
+
+function resetChart() {
+  lastChartStep = -1; // will cause updateChart to push step 0 on next call
+  chart.data.labels = [];
+  chart.data.datasets.forEach(ds => ds.data = []);
+  chart.update('none');
+  chartDead.data.labels = [];
+  chartDead.data.datasets.forEach(ds => ds.data = []);
+  chartDead.update('none');
+}
+
+// =============================================
+// PARAMETERS
+// =============================================
+let P = {};
+
+function readParams() {
+  const n = id => parseFloat(document.getElementById('p-' + id).value);
+  const s = id => document.getElementById('p-' + id).value;
+  const G = n('GRID_SIZE_PX') | 0;
+  // Scale ANTIFUNGAL_SOURCES from 150px to current grid
+  const scale = G / 150;
+  return {
+    GRID_SIZE_PX:                n('GRID_SIZE_PX') | 0,
+    SIMULATION_STEPS:            n('SIMULATION_STEPS') | 0,
+    INITIAL_CELLS:               n('INITIAL_CELLS') | 0,
+    TIME_STEP_DT:                n('TIME_STEP_DT'),
+    ANTIFUNGAL_INJECTION_STEP:   n('ANTIFUNGAL_INJECTION_STEP') | 0,
+    ANTIFUNGAL_EXPOSURE_MODE:    s('ANTIFUNGAL_EXPOSURE_MODE'),
+    ANTIFUNGAL_PULSE_INTERVAL:   n('ANTIFUNGAL_PULSE_INTERVAL') | 0,
+    ANTIFUNGAL_SPATIAL_MODE:     s('ANTIFUNGAL_SPATIAL_MODE'),
+    ANTIFUNGAL_SOURCE_DOSE:      n('ANTIFUNGAL_SOURCE_DOSE'),
+    ANTIFUNGAL_SOURCE_RADIUS:    n('ANTIFUNGAL_SOURCE_RADIUS') | 0,
+    ANTIFUNGAL_SOURCES:          (()=>{
+      const raw = document.getElementById('p-ANTIFUNGAL_SOURCES').value;
+      return raw.split(';').map(pair => {
+        const [x, y] = pair.trim().split(',').map(v => parseInt(v.trim(), 10));
+        return [Math.round(x * scale), Math.round(y * scale)];
+      }).filter(([x,y]) => !isNaN(x) && !isNaN(y));
+    })(),
+    NUTRIENT_EXPOSURE_MODE:      s('NUTRIENT_EXPOSURE_MODE'),
+    NUTRIENT_INJECTION_STEP:     n('NUTRIENT_INJECTION_STEP') | 0,
+    NUTRIENT_PULSE_INTERVAL:     n('NUTRIENT_PULSE_INTERVAL') | 0,
+    INIT_NUTRIENT_LEVEL:         n('INIT_NUTRIENT_LEVEL'),
+    INIT_ANTIFUNGAL_LEVEL:       n('INIT_ANTIFUNGAL_LEVEL'),
+    DIFFUSION_NUTRIENT:          n('DIFFUSION_NUTRIENT'),
+    DIFFUSION_ANTIFUNGAL:        n('DIFFUSION_ANTIFUNGAL'),
+    DIFFUSION_ITERATIONS:        n('DIFFUSION_ITERATIONS') | 0,
+    MAX_BIOMASS_PER_PX:          n('MAX_BIOMASS_PER_PX'),
+    MU_MAX:                      n('MU_MAX'),
+    MONOD_KS:                    n('MONOD_KS'),
+    MAINTENANCE_COEFF:           n('MAINTENANCE_COEFF'),
+    YIELD_TRUE:                  n('YIELD_TRUE'),
+    NEWBORN_BIOMASS:             n('NEWBORN_BIOMASS'),
+    DIVISION_BIOMASS:            n('DIVISION_BIOMASS'),
+    STARVATION_BIOMASS:          n('STARVATION_BIOMASS'),
+    RESERVOIR_FRACTION:          n('RESERVOIR_FRACTION'),
+    PUSH_PROBABILITY:            n('PUSH_PROBABILITY'),
+    MAX_PUSH_RADIUS:             n('MAX_PUSH_RADIUS') | 0,
+    MAX_ANTIFUNGAL_BINDING_LIVE:         n('MAX_ANTIFUNGAL_BINDING_LIVE'),
+    MAX_ANTIFUNGAL_BINDING_DEAD_APOP:    n('MAX_ANTIFUNGAL_BINDING_DEAD_APOP'),
+    MAX_ANTIFUNGAL_BINDING_DEAD_NECRO:   n('MAX_ANTIFUNGAL_BINDING_DEAD_NECRO'),
+    K_ON_ANTIFUNGAL:             n('K_ON_ANTIFUNGAL'),
+    K_OFF_ANTIFUNGAL:            n('K_OFF_ANTIFUNGAL'),
+    ANTIFUNGAL_DAMAGE_THRESHOLD: n('ANTIFUNGAL_DAMAGE_THRESHOLD'),
+    FUNGISTATIC_THRESHOLD:       n('FUNGISTATIC_THRESHOLD'),
+    RESUSCITATION_THRESHOLD:     n('RESUSCITATION_THRESHOLD'),
+    STRESS_START_TIME:           0,
+    APOPTOSIS_DURATION:          n('APOPTOSIS_DURATION'),
+    APOPTOSIS_LEAK_RATE:         n('APOPTOSIS_LEAK_RATE'),
+    ASSAY_DURATION_HOURS:        n('ASSAY_DURATION_HOURS'),
+    TOTAL_DEATH_MAX:             n('TOTAL_DEATH_MAX'),
+    TOTAL_DEATH_STEEPNESS:       n('TOTAL_DEATH_STEEPNESS'),
+    TOTAL_DEATH_C50:             n('TOTAL_DEATH_C50'),
+    NECRO_SLOPE:                 n('NECRO_SLOPE'),
+    NECRO_INTERCEPT:             n('NECRO_INTERCEPT'),
+  };
+}
+
+// =============================================
+// SIMULATIONS & CANVAS HANDLES
+// =============================================
+let simPlus, simMinus;
+let cvPlusN, cvPlusF, cvPlusC, cvPlusB;
+let cvMinusN, cvMinusF, cvMinusC, cvMinusB;
+
+function initCanvases() {
+  const G = P.GRID_SIZE_PX;
+  [cvPlusN, cvPlusF, cvPlusC, cvPlusB, cvMinusN, cvMinusF, cvMinusC, cvMinusB].forEach(cv => {
+    if (cv) { cv.width = G; cv.height = G; }
+  });
+}
+
+function getStartingPositions() {
+  const G = P.GRID_SIZE_PX;
+  const cx = (G - 1) / 2, cy = (G - 1) / 2;
+  const all = [];
+  for (let y = 0; y < G; y++) for (let x = 0; x < G; x++)
+    all.push([x, y, (x-cx)*(x-cx) + (y-cy)*(y-cy)]);
+  all.sort((a, b) => a[2] - b[2]);
+  return all.slice(0, P.INITIAL_CELLS).map(([x, y]) => [x, y]);
+}
+
+function resetSim() {
+  P = readParams();
+  initCanvases();
+  if (!simPlus)  simPlus  = new Simulation(true,  P);
+  else { simPlus.P = P; simPlus.W = P.GRID_SIZE_PX; simPlus.H = P.GRID_SIZE_PX; simPlus.tmpBuf = new Float32Array(P.GRID_SIZE_PX*P.GRID_SIZE_PX); }
+  if (!simMinus) simMinus = new Simulation(false, P);
+  else { simMinus.P = P; simMinus.W = P.GRID_SIZE_PX; simMinus.H = P.GRID_SIZE_PX; simMinus.tmpBuf = new Float32Array(P.GRID_SIZE_PX*P.GRID_SIZE_PX); }
+
+  simPlus  = new Simulation(true,  P);
+  simMinus = new Simulation(false, P);
+
+  const sp = getStartingPositions();
+  simPlus.reset(sp);
+  simMinus.reset(sp);
+  resetChart();
+  updateChart();
+  renderAll();
+}
+
+function applyAndReset() {
+  if (running) togglePlay();
+  resetSim();
+}
+
+// =============================================
+// ANIMATION LOOP
+// =============================================
+let running = false;
+let animId  = null;
+let stepsPerFrame = 5;
+
+function tick() {
+  if (!running) return;
+  const maxStep = P.SIMULATION_STEPS;
+  const spf = stepsPerFrame;
+
+  for (let i = 0; i < spf; i++) {
+    if (simPlus.stepCount >= maxStep) { running = false; break; }
+    simPlus.step();
+    simMinus.step();
+  }
+
+  updateChart();
+  renderAll();
+
+  if (running) animId = requestAnimationFrame(tick);
+  else {
+    document.getElementById('btn-play').textContent = '▶ Run';
+    document.getElementById('btn-play').classList.remove('active');
+  }
+}
+
+function togglePlay() {
+  running = !running;
+  const btn = document.getElementById('btn-play');
+  if (running) {
+    btn.textContent = '⏸ Pause';
+    btn.classList.add('active');
+    animId = requestAnimationFrame(tick);
+  } else {
+    btn.textContent = '▶ Run';
+    btn.classList.remove('active');
+    cancelAnimationFrame(animId);
+  }
+}
+
+function singleStep() {
+  if (running) return;
+  if (simPlus.stepCount >= P.SIMULATION_STEPS) return;
+  simPlus.step();
+  simMinus.step();
+  updateChart();
+  renderAll();
+}
+
+// =============================================
+// UI INIT
+// =============================================
+function toggleSection(head) {
+  head.classList.toggle('open');
+  head.nextElementSibling.classList.toggle('open');
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  // Canvas references
+  cvPlusN  = document.getElementById('cv-plus-n');
+  cvPlusF  = document.getElementById('cv-plus-f');
+  cvPlusC  = document.getElementById('cv-plus-c');
+  cvPlusB  = document.getElementById('cv-plus-b');
+  cvMinusN = document.getElementById('cv-minus-n');
+  cvMinusF = document.getElementById('cv-minus-f');
+  cvMinusC = document.getElementById('cv-minus-c');
+  cvMinusB = document.getElementById('cv-minus-b');
+
+  // Controls
+  document.getElementById('btn-play').onclick  = togglePlay;
+  document.getElementById('btn-step').onclick  = singleStep;
+  document.getElementById('btn-reset').onclick = applyAndReset;
+
+  const speedRange = document.getElementById('speed-range');
+  const speedVal   = document.getElementById('speed-val');
+  speedRange.addEventListener('input', () => {
+    stepsPerFrame = parseInt(speedRange.value);
+    speedVal.textContent = stepsPerFrame + '×';
+  });
+
+  initChart();
+  P = readParams();
+  initCanvases();
+  resetSim();
+});
+</script>
+</body>
+</html>

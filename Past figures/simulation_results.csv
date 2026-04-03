@@ -1,0 +1,16 @@
+Metric,PCD+,PCD-
+"Population Size (Total)",10000,10000
+"Alive Cells",5847,7474
+"Total Dead Cells",4153,2526
+" ↳ Dead (Apoptosis)",2203,0
+" ↳ Dead (Necrosis)",1548,1869
+" ↳ Dead (Starvation)",402,657
+"Max Growth Rate (cells/hr)",135.0,153.0
+"Absolute Fitness",58.47,74.74
+"Relative Fitness",0.439,0.561
+"Nutrients - Environment",102.15,83.06
+"Nutrients - Internal",16.83,16.15
+"Nutrients - Biomass Eq.",24794.61,31187.75
+"Nutrients - Lost/Burned",25347.83,18974.45
+"Antifungal - Environment",24920.88,26646.53
+"Antifungal - Absorbed",7079.12,5353.47
