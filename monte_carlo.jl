@@ -59,7 +59,7 @@ function run_experiment_7()
     println("--- Starting Experiment 7: Stochastic Monte Carlo Simulation ---")
     
     # 1. Setup Parameters
-    NUM_RUNS = 1
+    NUM_RUNS = 10
     
     # Choose a "borderline" scenario where survival is ambiguous. 
     # You may need to tweak this dose to find the "sweet spot" of stochasticity.
