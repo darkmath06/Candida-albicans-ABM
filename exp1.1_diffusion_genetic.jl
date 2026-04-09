@@ -1,0 +1,111 @@
+# ==========================================
+# Candida albicans Evolutionary Parameter Sweep
+# ==========================================
+# This script imports your ABM and runs experiments
+# across a range of parameters to find evolutionary tipping points.
+
+using DataFrames
+using CSV
+using Plots
+using Statistics
+
+# Import the model (pointing to where your CandidaCell logic currently is)
+include("core_model_genetic.jl")
+
+function run_evolutionary_sweep(;
+    # Define the ranges for the parameters you want to test
+    diffusion_range = range(0.1, stop=1.5, length=8),
+    mutation_rates = [0.01, 0.05, 0.1],
+    replicates = 5 # Number of times to run each parameter combination to account for randomness
+)
+    # Initialize an empty DataFrame to store our results
+    results = DataFrame(
+        DiffusionRate = Float64[],
+        MutationRate = Float64[],
+        Replicate = Int[],
+        FinalAlive = Int[],
+        FinalApop = Int[],
+        FinalNecro = Int[],
+        MeanSusceptibility = Float64[]
+    )
+
+    total_runs = length(diffusion_range) * length(mutation_rates) * replicates
+    current_run = 0
+
+    println("Starting Evolutionary Parameter Sweep...")
+    println("Total simulation runs scheduled: $total_runs")
+
+    # Loop through all parameter combinations
+    for mut in mutation_rates
+        for diff in diffusion_range
+            for rep in 1:replicates
+                current_run += 1
+                println("Progress: Run $current_run / $total_runs | Diff: $(round(diff, digits=2)), Mut: $mut, Rep: $rep")
+                
+                # Execute the headless simulation from candida_model.jl
+                # Passing our current swept parameters
+                alive, apop, necro, mean_susc = run_headless_simulation(
+                    diffusion_antifungal = diff,
+                    mutation_rate = mut
+                )
+                
+                # Record the results
+                push!(results, (diff, mut, rep, alive, apop, necro, mean_susc))
+            end
+        end
+    end
+
+    println("Sweep complete! Data collected.")
+    return results
+end
+
+function run_evolutionary_experiment()
+    # Run the sweep using the full default parameters defined above!
+    results_df = run_evolutionary_sweep(
+        diffusion_range = range(0.1, stop=1.5, length=8), 
+        mutation_rates = [0.01, 0.05, 0.1], 
+        replicates = 5 
+    )
+
+    # Aggregate the data (calculate mean and std across replicates)
+    grouped_data = combine(groupby(results_df, [:DiffusionRate, :MutationRate]), 
+                           :MeanSusceptibility => mean => :Avg_Evolved_Susceptibility,
+                           :MeanSusceptibility => std => :Std_Evolved_Susceptibility,
+                           :FinalAlive => mean => :Avg_Alive)
+
+    # Handle any potential NaN values in standard deviation if a run fails or has 1 replicate
+    grouped_data.Std_Evolved_Susceptibility = coalesce.(grouped_data.Std_Evolved_Susceptibility, 0.0)
+
+    # Create a plot showing the evolutionary trait divergence
+    p1 = plot(
+        title = "Evolution of Apoptosis vs. Antifungal Diffusion",
+        xlabel = "Antifungal Diffusion Rate",
+        ylabel = "Mean Apoptosis Susceptibility (Trait Value)",
+        legend = :outertopright,
+        ylims = (0, 1.0) # Trait goes from 0 to 1
+    )
+
+    for mut in unique(grouped_data.MutationRate)
+        subset_data = filter(row -> row.MutationRate == mut, grouped_data)
+        # Added yerror to include the standard deviation whiskersAC
+        plot!(p1, subset_data.DiffusionRate, subset_data.Avg_Evolved_Susceptibility, 
+              yerror = subset_data.Std_Evolved_Susceptibility,
+              label = "Mut Rate: $mut", marker = :circle, linewidth=2)
+    end
+
+    # 4. Save Data and Plots
+    csv_path = "Project/Data/2026-04-08_Evolutionary_Sweep_Results.csv" 
+    CSV.write(csv_path, results_df)
+    println("\nData successfully saved to: ", csv_path)
+    
+    println("Generating Plot...")
+    final_plot = p1 
+    
+    plot_path = "Project/Figures/2026-04-08_Evolutionary_Sweep_Plot.png"
+    savefig(final_plot, plot_path)
+    println("Plot successfully saved to: ", plot_path)
+    
+    println("\n=== Evolutionary Sweep Complete! ===")
+end
+
+run_evolutionary_experiment()

@@ -54,7 +54,7 @@ const NECRO_INTERCEPT = -0.036
 # ==========================================
 # --- AGENT TYPES ---
 # ==========================================
-@agent struct PCDPlusCell(GridAgent{2})
+@agent struct CandidaCell(GridAgent{2})
     alive::Bool
     is_apoptotic::Bool
     apoptosis_timer::Float64
@@ -67,40 +67,24 @@ const NECRO_INTERCEPT = -0.036
     internal_nutrients::Float64 
     can_divide::Bool       
     
+    # --- THE EVOLUTIONARY TRAIT ---
+    apoptosis_susceptibility::Float64 # Probability to trigger PCD vs Necrosis when lethally stressed
+
     # Optimization: Store demands on the agent to avoid Dict allocations
     n_demand::Float64
     f_demand::Float64
     f_release::Float64
 end
 
-@agent struct PCDMinusCell(GridAgent{2})
-    alive::Bool
-    ANTIFUNGAL_exposure_time::Float64
-    dead_necrosis::Bool
-    dead_starvation::Bool
-    bound_ANTIFUNGAL::Float64
-    biomass::Float64
-    internal_nutrients::Float64 
-    
-    # Optimization: Store demands on the agent to avoid Dict allocations
-    n_demand::Float64
-    f_demand::Float64
-    f_release::Float64
-end
+is_apoptotic(a::CandidaCell) = a.is_apoptotic
+can_divide(a::CandidaCell) = a.can_divide
+is_dead_apoptosis(a::CandidaCell) = a.dead_apoptosis
 
-is_apoptotic(a::PCDPlusCell) = a.is_apoptotic
-is_apoptotic(a::PCDMinusCell) = false
-can_divide(a::PCDPlusCell) = a.can_divide
-can_divide(a::PCDMinusCell) = true
-is_dead_apoptosis(a::PCDPlusCell) = a.dead_apoptosis
-is_dead_apoptosis(a::PCDMinusCell) = false
-
-set_dead_apoptosis!(a::PCDPlusCell) = begin
+set_dead_apoptosis!(a::CandidaCell) = begin
     a.alive = false
     a.is_apoptotic = false
     a.dead_apoptosis = true
 end
-set_dead_apoptosis!(a::PCDMinusCell) = nothing
 
 # ==========================================
 # --- DYNAMIC PROPERTIES (Sweepable) ---
@@ -110,10 +94,10 @@ mutable struct PetriDishProperties
     ANTIFUNGAL_layer::Matrix{Float64}
     laplacian_kernel::Matrix{Float64}
     neighbor_kernel::Matrix{Float64}
-    is_pcd_plus::Bool
     total_lost_nutrients::Float64 
     
     # --- The Parameters We Can Sweep ---
+    mutation_rate::Float64
     init_nutrient::Float64
     spatial_mode::SpatialMode
     source_dose::Float64
@@ -126,11 +110,10 @@ mutable struct PetriDishProperties
     fungistatic_thresh::Float64
     reservoir_fraction::Float64
     diffusion_antifungal::Float64
-    pcd_minus_death_modifier::Float64
 
     # --- OPTIMIZATION BUFFERS (Zero-Allocation Arrays/Matrices) ---
     planned_biomass::Matrix{Float64}
-    newborn_spots::Vector{Tuple{Tuple{Int,Int}, Float64, Float64}}
+    newborn_spots::Vector{Tuple{Tuple{Int,Int}, Float64, Float64, Float64}} # Includes parent trait
     shuffled_ids::Vector{Int}
     
     # Pre-allocated arrays for division & pushing mechanics
@@ -142,11 +125,11 @@ mutable struct PetriDishProperties
     push_weights::Vector{Float64}
 end
 
-function initialize_model(AgentType::Type, starting_positions::Vector{Tuple{Int, Int}};
-    init_nutrient = 12, spatial_mode = POINT_SOURCES, source_dose = 10000.0,
+function initialize_model(starting_positions::Vector{Tuple{Int, Int}};
+    mutation_rate = 0.05, init_nutrient = 12, spatial_mode = UNIFORM, source_dose = 1.5,
     max_binding_apop = 2.5, max_binding_necro = 0.42, apop_leak_rate = 0.5,
     apop_duration = 2.0, apop_point_of_no_return = 1.0, resuscitation_thresh = 0, fungistatic_thresh = 0.75,
-    reservoir_fraction = 0.1, diffusion_antifungal = 0.3, pcd_minus_death_modifier = 0.5)
+    reservoir_fraction = 0.1, diffusion_antifungal = 0.3)
 
     space = GridSpace((GRID_SIZE_PX, GRID_SIZE_PX); periodic=false)
     props = PetriDishProperties(
@@ -154,26 +137,25 @@ function initialize_model(AgentType::Type, starting_positions::Vector{Tuple{Int,
         fill(0.0, GRID_SIZE_PX, GRID_SIZE_PX),
         [1/6 2/3 1/6; 2/3 -10/3 2/3; 1/6 2/3 1/6],
         [1/6 2/3 1/6; 2/3 0.0 2/3; 1/6 2/3 1/6],
-        AgentType === PCDPlusCell, 0.0,
-        init_nutrient, spatial_mode, source_dose, max_binding_apop, max_binding_necro,
+        0.0,
+        mutation_rate, init_nutrient, spatial_mode, source_dose, max_binding_apop, max_binding_necro,
         apop_leak_rate, apop_duration, apop_point_of_no_return, resuscitation_thresh, fungistatic_thresh, 
-        reservoir_fraction, diffusion_antifungal, pcd_minus_death_modifier,
+        reservoir_fraction, diffusion_antifungal,
         zeros(Float64, GRID_SIZE_PX, GRID_SIZE_PX),                   # planned_biomass
-        Tuple{Tuple{Int,Int}, Float64, Float64}[],                    # newborn_spots
+        Tuple{Tuple{Int,Int}, Float64, Float64, Float64}[],           # newborn_spots
         Int[],                                                        # shuffled_ids
         Tuple{Int,Int}[], Float64[], Tuple{Int,Int}[],                # avail division buffers
         Tuple{Tuple{Int,Int}, Float64}[], Tuple{Int,Int}[], Float64[] # push buffers
     )
 
-    model = StandardABM(AgentType, space; properties=props, model_step! = complex_model_step!)
+    model = StandardABM(CandidaCell, space; properties=props, model_step! = complex_model_step!)
     init_internal = NEWBORN_BIOMASS * reservoir_fraction
 
     for pos in starting_positions
-        if AgentType === PCDPlusCell
-            add_agent!(pos, PCDPlusCell, model, true, false, 0.0, 0.0, false, false, false, 0.0, NEWBORN_BIOMASS, init_internal, true, 0.0, 0.0, 0.0)
-        else
-            add_agent!(pos, PCDMinusCell, model, true, 0.0, false, false, 0.0, NEWBORN_BIOMASS, init_internal, 0.0, 0.0, 0.0)
-        end
+        # Start the population with highly diverse genetic traits (0.0 to 1.0)
+        # FIX: using abmrng(model) instead of model.rng
+        initial_trait = rand(abmrng(model)) 
+        add_agent!(pos, CandidaCell, model, true, false, 0.0, 0.0, false, false, false, 0.0, NEWBORN_BIOMASS, init_internal, true, initial_trait, 0.0, 0.0, 0.0)
     end
     return model
 end
@@ -195,7 +177,7 @@ function get_death_rates(c::Float64)
     return hourly_total_rate * ratio_apop, hourly_total_rate * ratio_necro
 end
 
-function apply_stress!(agent::PCDPlusCell, local_ANTIFUNGAL::Float64, model)
+function apply_stress!(agent::CandidaCell, local_ANTIFUNGAL::Float64, model)
     if !agent.alive; return; end
     if local_ANTIFUNGAL >= ANTIFUNGAL_DAMAGE_THRESHOLD
         agent.ANTIFUNGAL_exposure_time += TIME_STEP_DT
@@ -225,45 +207,23 @@ function apply_stress!(agent::PCDPlusCell, local_ANTIFUNGAL::Float64, model)
             total_rate = rate_apop + rate_necro
             if total_rate > 0
                 prob_death = 1.0 - exp(-total_rate * TIME_STEP_DT)
-                if rand() < prob_death
-                    prob_apop_given_death = rate_apop / total_rate
-                    if rand() < prob_apop_given_death
+                # FIX: using abmrng(model) instead of model.rng
+                if rand(abmrng(model)) < prob_death
+                    # Evolutionary selection: the cell's genetic trait dictates its death pathway
+                    prob_apop_given_death = agent.apoptosis_susceptibility
+                    # FIX: using abmrng(model) instead of model.rng
+                    if rand(abmrng(model)) < prob_apop_given_death
                         agent.is_apoptotic = true 
                     else
                         agent.alive = false
                         agent.dead_necrosis = true
                         model.nutrient_layer[agent.pos[2], agent.pos[1]] += agent.internal_nutrients
                         agent.internal_nutrients = 0.0
+                        # Necrosis releases the antifungal back to the environment (hurts kin)
                         model.ANTIFUNGAL_layer[agent.pos[2], agent.pos[1]] += agent.bound_ANTIFUNGAL
                         agent.bound_ANTIFUNGAL = 0.0
                     end
                 end
-            end
-        end
-    end
-end
-
-function apply_stress!(agent::PCDMinusCell, local_ANTIFUNGAL::Float64, model)
-    if !agent.alive; return; end
-    if local_ANTIFUNGAL >= ANTIFUNGAL_DAMAGE_THRESHOLD
-        agent.ANTIFUNGAL_exposure_time += TIME_STEP_DT
-    end
-
-    if agent.ANTIFUNGAL_exposure_time >= STRESS_START_TIME
-        rate_apop, rate_necro = get_death_rates(local_ANTIFUNGAL)
-        total_rate = rate_apop + rate_necro
-        
-        adjusted_rate = total_rate * model.pcd_minus_death_modifier
-        
-        if adjusted_rate > 0
-            prob_death = 1.0 - exp(-adjusted_rate * TIME_STEP_DT)
-            if rand() < prob_death
-                agent.alive = false
-                agent.dead_necrosis = true
-                model.nutrient_layer[agent.pos[2], agent.pos[1]] += agent.internal_nutrients
-                agent.internal_nutrients = 0.0
-                model.ANTIFUNGAL_layer[agent.pos[2], agent.pos[1]] += agent.bound_ANTIFUNGAL
-                agent.bound_ANTIFUNGAL = 0.0
             end
         end
     end
@@ -479,7 +439,8 @@ function complex_model_step!(model)
                                 daughter_n = agent.internal_nutrients * daughter_fraction
                                 agent.internal_nutrients -= daughter_n
                                 model.planned_biomass[chosen_spot[2], chosen_spot[1]] += NEWBORN_BIOMASS
-                                push!(model.newborn_spots, (chosen_spot, NEWBORN_BIOMASS, daughter_n))
+                                # Pass parent's genetic trait to newborn
+                                push!(model.newborn_spots, (chosen_spot, NEWBORN_BIOMASS, daughter_n, agent.apoptosis_susceptibility))
                             else
                                 excess = agent.biomass - DIVISION_BIOMASS
                                 agent.biomass = DIVISION_BIOMASS
@@ -503,17 +464,18 @@ function complex_model_step!(model)
     end
 
     # 5. Spawn Newborns
-    for (pos, b, n) in model.newborn_spots
+    for (pos, b, n, parent_trait) in model.newborn_spots
         cur_b = 0.0
         for a in agents_in_position(pos, model)
             cur_b += a.biomass
         end
         if cur_b + b <= MAX_BIOMASS_PER_PX + 0.01 
-            if model.is_pcd_plus
-                add_agent!(pos, PCDPlusCell, model, true, false, 0.0, 0.0, false, false, false, 0.0, b, n, true, 0.0, 0.0, 0.0)
-            else
-                add_agent!(pos, PCDMinusCell, model, true, 0.0, false, false, 0.0, b, n, 0.0, 0.0, 0.0)
-            end
+            # Apply mutation noise to the offspring
+            # FIX: using abmrng(model) instead of model.rng
+            mut_noise = randn(abmrng(model)) * model.mutation_rate
+            new_trait = clamp(parent_trait + mut_noise, 0.0, 1.0)
+            
+            add_agent!(pos, CandidaCell, model, true, false, 0.0, 0.0, false, false, false, 0.0, b, n, true, new_trait, 0.0, 0.0, 0.0)
         else
             model.total_lost_nutrients += (b / YIELD_TRUE) + n
         end
@@ -540,13 +502,13 @@ end
 # ==========================================
 # --- HEADLESS EXPERIMENT RUNNER ---
 # ==========================================
-function run_headless_simulation(AgentType::Type; kwargs...)
+function run_headless_simulation(; kwargs...)
     cx, cy = (GRID_SIZE_PX + 1) / 2.0, (GRID_SIZE_PX + 1) / 2.0
     all_pos = [(x, y) for x in 1:GRID_SIZE_PX for y in 1:GRID_SIZE_PX]
     sort!(all_pos, by = pos -> (pos[1] - cx)^2 + (pos[2] - cy)^2)
     starting_positions = all_pos[1:min(INITIAL_CELLS, length(all_pos))]
     
-    model = initialize_model(AgentType, starting_positions; kwargs...)
+    model = initialize_model(starting_positions; kwargs...)
     
     injection_step = model.spatial_mode == UNIFORM ? 73 : 1
     
@@ -574,5 +536,9 @@ function run_headless_simulation(AgentType::Type; kwargs...)
     final_apop = count(a -> is_dead_apoptosis(a), allagents(model))
     final_necro = count(a -> a.dead_necrosis, allagents(model))
     
-    return final_alive, final_apop, final_necro
+    # Calculate the mean evolved trait at the end of the simulation
+    alive_cells = filter(a -> a.alive, collect(allagents(model)))
+    mean_susceptibility = isempty(alive_cells) ? 0.0 : mean(a.apoptosis_susceptibility for a in alive_cells)
+    
+    return final_alive, final_apop, final_necro, mean_susceptibility
 end
