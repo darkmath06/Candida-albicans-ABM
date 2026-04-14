@@ -16,7 +16,9 @@ function run_evolutionary_sweep(;
     # Define the ranges for the parameters you want to test
     dose_range = [0.5, 1.0, 1.5, 2.0],
     mutation_rates = [0.01, 0.05, 0.1],
-    replicates = 5 # Number of times to run each parameter combination to account for randomness
+    replicates = 5, # Number of times to run each parameter combination to account for randomness
+    passages = 5,
+    passage_fraction = 0.1
 )
     # Initialize an empty DataFrame to store our results
     results = DataFrame(
@@ -42,12 +44,14 @@ function run_evolutionary_sweep(;
                 current_run += 1
                 println("Progress: Run $current_run / $total_runs | Dose: $dose, Mut: $mut, Rep: $rep")
                 
-                # Execute the headless simulation
-                # Pass UNIFORM mode and our swept dose parameter
-                alive, apop, necro, mean_susc = run_headless_simulation(
+                # Execute the headless simulation from core_model_genetic.jl
+                # Passing UNIFORM mode and our swept dose parameter
+                alive, apop, necro, mean_susc, _ = run_headless_simulation(
                     spatial_mode = UNIFORM,
                     source_dose = dose,
-                    mutation_rate = mut
+                    mutation_rate = mut,
+                    passages = passages,
+                    passage_fraction = passage_fraction
                 )
                 
                 # Record the results
@@ -65,7 +69,9 @@ function run_evolutionary_experiment()
     results_df = run_evolutionary_sweep(
         dose_range = [0.5, 1.0, 1.5, 2.0], 
         mutation_rates = [0.01, 0.05, 0.1], 
-        replicates = 5 
+        replicates = 15,
+        passages = 5,
+        passage_fraction = 0.1
     )
 
     # Aggregate the data (calculate mean and std across replicates)
@@ -79,8 +85,8 @@ function run_evolutionary_experiment()
 
     # Create a plot showing the evolutionary trait divergence
     p1 = plot(
-        title = "Evolution of Apoptosis vs. Antifungal Concentration",
-        xlabel = "Uniform Antifungal Concentration (Dose)",
+        title = "Evolution of Apoptosis vs. Antifungal Concentration\n(After 5 Passages)",
+        xlabel = "Uniform Antifungal Concentration (µg/ml)",
         ylabel = "Mean Apoptosis Susceptibility (Trait Value)",
         legend = :outertopright,
         ylims = (0, 1.0) # Trait goes from 0 to 1

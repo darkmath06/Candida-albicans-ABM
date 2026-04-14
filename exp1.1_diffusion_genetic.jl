@@ -16,7 +16,9 @@ function run_evolutionary_sweep(;
     # Define the ranges for the parameters you want to test
     diffusion_range = range(0.1, stop=1.5, length=8),
     mutation_rates = [0.01, 0.05, 0.1],
-    replicates = 5 # Number of times to run each parameter combination to account for randomness
+    replicates = 15, # Number of times to run each parameter combination to account for randomness
+    passages = 5,
+    passage_fraction = 0.1
 )
     # Initialize an empty DataFrame to store our results
     results = DataFrame(
@@ -44,9 +46,11 @@ function run_evolutionary_sweep(;
                 
                 # Execute the headless simulation from candida_model.jl
                 # Passing our current swept parameters
-                alive, apop, necro, mean_susc = run_headless_simulation(
+                alive, apop, necro, mean_susc, _ = run_headless_simulation(
                     diffusion_antifungal = diff,
-                    mutation_rate = mut
+                    mutation_rate = mut,
+                    passages = passages,
+                    passage_fraction = passage_fraction
                 )
                 
                 # Record the results
@@ -64,7 +68,9 @@ function run_evolutionary_experiment()
     results_df = run_evolutionary_sweep(
         diffusion_range = range(0.1, stop=1.5, length=8), 
         mutation_rates = [0.01, 0.05, 0.1], 
-        replicates = 5 
+        replicates = 15,
+        passages = 5,
+        passage_fraction = 0.1
     )
 
     # Aggregate the data (calculate mean and std across replicates)
@@ -78,7 +84,7 @@ function run_evolutionary_experiment()
 
     # Create a plot showing the evolutionary trait divergence
     p1 = plot(
-        title = "Evolution of Apoptosis vs. Antifungal Diffusion",
+        title = "Evolution of Apoptosis vs. Antifungal Diffusion\n(After 5 Passages)",
         xlabel = "Antifungal Diffusion Rate",
         ylabel = "Mean Apoptosis Susceptibility (Trait Value)",
         legend = :outertopright,

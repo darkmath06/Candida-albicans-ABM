@@ -3,6 +3,7 @@ using Random
 using StatsBase
 using Images
 using ImageFiltering
+using Plots # Added for visual petri dish generation
 
 # ==========================================
 # --- CONSTANT MECHANICS (Non-Swept) ---
@@ -68,9 +69,9 @@ const NECRO_INTERCEPT = -0.036
     can_divide::Bool       
     
     # --- THE EVOLUTIONARY TRAIT ---
-    apoptosis_susceptibility::Float64 # Probability to trigger PCD vs Necrosis when lethally stressed
+    apoptosis_susceptibility::Float64 
 
-    # Optimization: Store demands on the agent to avoid Dict allocations
+    # Optimization: Store demands on the agent
     n_demand::Float64
     f_demand::Float64
     f_release::Float64
@@ -96,7 +97,6 @@ mutable struct PetriDishProperties
     neighbor_kernel::Matrix{Float64}
     total_lost_nutrients::Float64 
     
-    # --- The Parameters We Can Sweep ---
     mutation_rate::Float64
     init_nutrient::Float64
     spatial_mode::SpatialMode
@@ -111,12 +111,10 @@ mutable struct PetriDishProperties
     reservoir_fraction::Float64
     diffusion_antifungal::Float64
 
-    # --- OPTIMIZATION BUFFERS (Zero-Allocation Arrays/Matrices) ---
     planned_biomass::Matrix{Float64}
-    newborn_spots::Vector{Tuple{Tuple{Int,Int}, Float64, Float64, Float64}} # Includes parent trait
+    newborn_spots::Vector{Tuple{Tuple{Int,Int}, Float64, Float64, Float64}} 
     shuffled_ids::Vector{Int}
     
-    # Pre-allocated arrays for division & pushing mechanics
     avail_spots::Vector{Tuple{Int,Int}}
     avail_weights::Vector{Float64}
     truly_empty::Vector{Tuple{Int,Int}}
@@ -126,6 +124,7 @@ mutable struct PetriDishProperties
 end
 
 function initialize_model(starting_positions::Vector{Tuple{Int, Int}};
+    initial_traits = nothing,
     mutation_rate = 0.05, init_nutrient = 12, spatial_mode = UNIFORM, source_dose = 1.5,
     max_binding_apop = 2.5, max_binding_necro = 0.42, apop_leak_rate = 0.5,
     apop_duration = 2.0, apop_point_of_no_return = 1.0, resuscitation_thresh = 0, fungistatic_thresh = 0.75,
@@ -141,28 +140,23 @@ function initialize_model(starting_positions::Vector{Tuple{Int, Int}};
         mutation_rate, init_nutrient, spatial_mode, source_dose, max_binding_apop, max_binding_necro,
         apop_leak_rate, apop_duration, apop_point_of_no_return, resuscitation_thresh, fungistatic_thresh, 
         reservoir_fraction, diffusion_antifungal,
-        zeros(Float64, GRID_SIZE_PX, GRID_SIZE_PX),                   # planned_biomass
-        Tuple{Tuple{Int,Int}, Float64, Float64, Float64}[],           # newborn_spots
-        Int[],                                                        # shuffled_ids
-        Tuple{Int,Int}[], Float64[], Tuple{Int,Int}[],                # avail division buffers
-        Tuple{Tuple{Int,Int}, Float64}[], Tuple{Int,Int}[], Float64[] # push buffers
+        zeros(Float64, GRID_SIZE_PX, GRID_SIZE_PX),                   
+        Tuple{Tuple{Int,Int}, Float64, Float64, Float64}[],           
+        Int[],                                                        
+        Tuple{Int,Int}[], Float64[], Tuple{Int,Int}[],                
+        Tuple{Tuple{Int,Int}, Float64}[], Tuple{Int,Int}[], Float64[] 
     )
 
     model = StandardABM(CandidaCell, space; properties=props, model_step! = complex_model_step!)
     init_internal = NEWBORN_BIOMASS * reservoir_fraction
 
-    for pos in starting_positions
-        # Start the population with highly diverse genetic traits (0.0 to 1.0)
-        # FIX: using abmrng(model) instead of model.rng
-        initial_trait = rand(abmrng(model)) 
+    for (i, pos) in enumerate(starting_positions)
+        initial_trait = initial_traits !== nothing ? initial_traits[i] : rand(abmrng(model)) 
         add_agent!(pos, CandidaCell, model, true, false, 0.0, 0.0, false, false, false, 0.0, NEWBORN_BIOMASS, init_internal, true, initial_trait, 0.0, 0.0, 0.0)
     end
     return model
 end
 
-# ==========================================
-# --- EXECUTION LOGIC ---
-# ==========================================
 function get_death_rates(c::Float64)
     if c < ANTIFUNGAL_DAMAGE_THRESHOLD; return 0.0, 0.0; end
     total_death = TOTAL_DEATH_MAX / (1.0 + exp(-TOTAL_DEATH_STEEPNESS * (c - TOTAL_DEATH_C50)))
@@ -207,11 +201,8 @@ function apply_stress!(agent::CandidaCell, local_ANTIFUNGAL::Float64, model)
             total_rate = rate_apop + rate_necro
             if total_rate > 0
                 prob_death = 1.0 - exp(-total_rate * TIME_STEP_DT)
-                # FIX: using abmrng(model) instead of model.rng
                 if rand(abmrng(model)) < prob_death
-                    # Evolutionary selection: the cell's genetic trait dictates its death pathway
                     prob_apop_given_death = agent.apoptosis_susceptibility
-                    # FIX: using abmrng(model) instead of model.rng
                     if rand(abmrng(model)) < prob_apop_given_death
                         agent.is_apoptotic = true 
                     else
@@ -219,7 +210,6 @@ function apply_stress!(agent::CandidaCell, local_ANTIFUNGAL::Float64, model)
                         agent.dead_necrosis = true
                         model.nutrient_layer[agent.pos[2], agent.pos[1]] += agent.internal_nutrients
                         agent.internal_nutrients = 0.0
-                        # Necrosis releases the antifungal back to the environment (hurts kin)
                         model.ANTIFUNGAL_layer[agent.pos[2], agent.pos[1]] += agent.bound_ANTIFUNGAL
                         agent.bound_ANTIFUNGAL = 0.0
                     end
@@ -230,12 +220,10 @@ function apply_stress!(agent::CandidaCell, local_ANTIFUNGAL::Float64, model)
 end
 
 function complex_model_step!(model)
-    # 1. Clear pre-allocated matrices and arrays 
     fill!(model.planned_biomass, 0.0)
     empty!(model.newborn_spots)
     empty!(model.shuffled_ids)
 
-    # 2. Reset and calculate demands for all agents
     for agent in allagents(model)
         agent.n_demand = 0.0
         agent.f_demand = 0.0
@@ -287,14 +275,11 @@ function complex_model_step!(model)
             agent.f_release = min(-net_change, bound_f)
         end
         
-        # Add to IDs buffer for shuffling
         push!(model.shuffled_ids, agent.id)
     end
 
-    # 3. Shuffle IDs safely to prevent iteration order bias
     shuffle!(model.shuffled_ids)
 
-    # 4. Act upon demands
     for id in model.shuffled_ids
         agent = model[id]
         x, y = agent.pos
@@ -362,7 +347,6 @@ function complex_model_step!(model)
                             empty!(model.avail_weights)
                             empty!(model.truly_empty)
                             
-                            # Safely avoid iterator-based array allocations
                             function check_and_add_spot(p)
                                 cur_b = 0.0
                                 for a in agents_in_position(p, model); cur_b += a.biomass; end
@@ -439,7 +423,6 @@ function complex_model_step!(model)
                                 daughter_n = agent.internal_nutrients * daughter_fraction
                                 agent.internal_nutrients -= daughter_n
                                 model.planned_biomass[chosen_spot[2], chosen_spot[1]] += NEWBORN_BIOMASS
-                                # Pass parent's genetic trait to newborn
                                 push!(model.newborn_spots, (chosen_spot, NEWBORN_BIOMASS, daughter_n, agent.apoptosis_susceptibility))
                             else
                                 excess = agent.biomass - DIVISION_BIOMASS
@@ -452,7 +435,6 @@ function complex_model_step!(model)
             end
         end
 
-        # Bind/Release Antifungal
         if agent.f_demand > 0
             actual_binding = min(agent.f_demand, model.ANTIFUNGAL_layer[y, x])
             agent.bound_ANTIFUNGAL += actual_binding
@@ -463,15 +445,12 @@ function complex_model_step!(model)
         end
     end
 
-    # 5. Spawn Newborns
     for (pos, b, n, parent_trait) in model.newborn_spots
         cur_b = 0.0
         for a in agents_in_position(pos, model)
             cur_b += a.biomass
         end
         if cur_b + b <= MAX_BIOMASS_PER_PX + 0.01 
-            # Apply mutation noise to the offspring
-            # FIX: using abmrng(model) instead of model.rng
             mut_noise = randn(abmrng(model)) * model.mutation_rate
             new_trait = clamp(parent_trait + mut_noise, 0.0, 1.0)
             
@@ -481,7 +460,6 @@ function complex_model_step!(model)
         end
     end
 
-    # 6. Diffusion (Untouched as requested)
     alpha_n = DIFFUSION_NUTRIENT * TIME_STEP_DT
     alpha_f = model.diffusion_antifungal * TIME_STEP_DT
     rhs_n = model.nutrient_layer .+ (alpha_n / 2.0) .* imfilter(model.nutrient_layer, centered(model.laplacian_kernel), "replicate")
@@ -502,43 +480,90 @@ end
 # ==========================================
 # --- HEADLESS EXPERIMENT RUNNER ---
 # ==========================================
-function run_headless_simulation(; kwargs...)
+function run_headless_simulation(; passages=5, passage_fraction=0.1, record_visuals=false, run_id="Experiment", kwargs...)
     cx, cy = (GRID_SIZE_PX + 1) / 2.0, (GRID_SIZE_PX + 1) / 2.0
     all_pos = [(x, y) for x in 1:GRID_SIZE_PX for y in 1:GRID_SIZE_PX]
     sort!(all_pos, by = pos -> (pos[1] - cx)^2 + (pos[2] - cy)^2)
-    starting_positions = all_pos[1:min(INITIAL_CELLS, length(all_pos))]
     
-    model = initialize_model(starting_positions; kwargs...)
+    current_traits = nothing
+    final_alive, final_apop, final_necro = 0, 0, 0
+    mean_susceptibility = NaN 
     
-    injection_step = model.spatial_mode == UNIFORM ? 73 : 1
+    # Store population history across passages
+    trait_history = Float64[]
+    alive_history = Int[]
+    apop_history = Int[]
+    necro_history = Int[]
     
-    for step in 1:SIMULATION_STEPS
-        if step == injection_step
-            if model.spatial_mode == UNIFORM
-                model.ANTIFUNGAL_layer .= model.source_dose
-            elseif model.spatial_mode == POINT_SOURCES
-                for (cx, cy) in ANTIFUNGAL_SOURCES
-                    for dx in -ANTIFUNGAL_SOURCE_RADIUS:ANTIFUNGAL_SOURCE_RADIUS
-                        for dy in -ANTIFUNGAL_SOURCE_RADIUS:ANTIFUNGAL_SOURCE_RADIUS
-                            sx, sy = cx + dx, cy + dy
-                            if 1 <= sx <= GRID_SIZE_PX && 1 <= sy <= GRID_SIZE_PX
-                                model.ANTIFUNGAL_layer[sy, sx] += model.source_dose
+    for passage in 1:passages
+        num_starting = current_traits !== nothing ? length(current_traits) : min(INITIAL_CELLS, length(all_pos))
+        starting_positions = all_pos[1:num_starting]
+        
+        model = initialize_model(starting_positions; initial_traits=current_traits, kwargs...)
+        injection_step = model.spatial_mode == UNIFORM ? 73 : 1
+        
+        for step in 1:SIMULATION_STEPS
+            if step == injection_step
+                if model.spatial_mode == UNIFORM
+                    model.ANTIFUNGAL_layer .= model.source_dose
+                elseif model.spatial_mode == POINT_SOURCES
+                    for (cx, cy) in ANTIFUNGAL_SOURCES
+                        for dx in -ANTIFUNGAL_SOURCE_RADIUS:ANTIFUNGAL_SOURCE_RADIUS
+                            for dy in -ANTIFUNGAL_SOURCE_RADIUS:ANTIFUNGAL_SOURCE_RADIUS
+                                sx, sy = cx + dx, cy + dy
+                                if 1 <= sx <= GRID_SIZE_PX && 1 <= sy <= GRID_SIZE_PX
+                                    model.ANTIFUNGAL_layer[sy, sx] += model.source_dose
+                                end
                             end
                         end
                     end
                 end
             end
+            Agents.step!(model, 1)
         end
-        Agents.step!(model, 1)
+        
+        alive_cells = filter(a -> a.alive, collect(allagents(model)))
+        final_alive = length(alive_cells)
+        final_apop = count(a -> is_dead_apoptosis(a), allagents(model))
+        final_necro = count(a -> a.dead_necrosis, allagents(model))
+        
+        # FIX: Explicitly assign NaN (Not a Number) if extinct to avoid 0.0 averaging bias
+        mean_susceptibility = isempty(alive_cells) ? NaN : mean(a.apoptosis_susceptibility for a in alive_cells)
+        
+        # Record population logs
+        push!(trait_history, mean_susceptibility)
+        push!(alive_history, final_alive)
+        push!(apop_history, final_apop)
+        push!(necro_history, final_necro)
+
+        # Output the petri dish visual if requested
+        if record_visuals
+            mkpath("Project/Figures/PetriDish")
+            # Create a heatmap of the background drug
+            p_dish = heatmap(1:GRID_SIZE_PX, 1:GRID_SIZE_PX, model.ANTIFUNGAL_layer, 
+                             color=:Greys, legend=false, aspect_ratio=1.0, showaxis=false,
+                             title="Passage $passage (Mean Trait: $(isnan(mean_susceptibility) ? "Extinct" : round(mean_susceptibility, digits=2)))")
+            
+            # Plot individual cells on top, colored by trait
+            if final_alive > 0
+                xs = [a.pos[1] for a in alive_cells]
+                ys = [a.pos[2] for a in alive_cells]
+                cs = [a.apoptosis_susceptibility for a in alive_cells]
+                scatter!(p_dish, xs, ys, marker_z=cs, clims=(0.0, 1.0), marker=:circle, 
+                         markersize=2, markerstrokewidth=0, colorbar_title="Trait (0=Self, 1=Alt)", 
+                         color=:viridis)
+            end
+            savefig(p_dish, "Project/Figures/PetriDish/$(run_id)_Passage_$(passage).png")
+        end
+        
+        if passage < passages && final_alive > 0
+            num_to_sample = max(1, round(Int, final_alive * passage_fraction))
+            sampled_cells = sample(alive_cells, num_to_sample, replace=false)
+            current_traits = [a.apoptosis_susceptibility for a in sampled_cells]
+        elseif final_alive == 0
+            break  # Extinction
+        end
     end
     
-    final_alive = count(a -> a.alive, allagents(model))
-    final_apop = count(a -> is_dead_apoptosis(a), allagents(model))
-    final_necro = count(a -> a.dead_necrosis, allagents(model))
-    
-    # Calculate the mean evolved trait at the end of the simulation
-    alive_cells = filter(a -> a.alive, collect(allagents(model)))
-    mean_susceptibility = isempty(alive_cells) ? 0.0 : mean(a.apoptosis_susceptibility for a in alive_cells)
-    
-    return final_alive, final_apop, final_necro, mean_susceptibility
+    return final_alive, final_apop, final_necro, mean_susceptibility, trait_history, alive_history, apop_history, necro_history
 end
