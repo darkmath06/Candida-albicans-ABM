@@ -151,7 +151,9 @@ function initialize_model(starting_positions::Vector{Tuple{Int, Int}};
     init_internal = NEWBORN_BIOMASS * reservoir_fraction
 
     for (i, pos) in enumerate(starting_positions)
-        initial_trait = initial_traits !== nothing ? initial_traits[i] : rand(abmrng(model)) 
+        # --- THE FIX ---
+        # Instead of randomly seeding new cells, start everyone at exactly 0.5 (unless carrying over from a previous passage)
+        initial_trait = initial_traits !== nothing ? initial_traits[i] : 0.5 
         add_agent!(pos, CandidaCell, model, true, false, 0.0, 0.0, false, false, false, 0.0, NEWBORN_BIOMASS, init_internal, true, initial_trait, 0.0, 0.0, 0.0)
     end
     return model

@@ -14,9 +14,9 @@ include("core_model_genetic.jl")
 
 function run_evolutionary_sweep(;
     # Define the ranges for the parameters you want to test
-    dose_range = [0.5, 1.0, 1.5, 2.0],
-    mutation_rates = [0.01, 0.05, 0.1],
-    replicates = 5, # Number of times to run each parameter combination to account for randomness
+    dose_range = [0.0],
+    mutation_rates = [0.05],
+    replicates = 15, # Number of times to run each parameter combination to account for randomness
     passages = 5,
     passage_fraction = 0.1
 )
@@ -67,9 +67,9 @@ end
 function run_evolutionary_experiment()
     # Run the sweep using the concentration doses requested
     results_df = run_evolutionary_sweep(
-        dose_range = [0.5, 1.0, 1.5, 2.0], 
-        mutation_rates = [0.01, 0.05, 0.1], 
-        replicates = 15,
+        dose_range = [0.0], 
+        mutation_rates = [0.05], 
+        replicates = 5,
         passages = 5,
         passage_fraction = 0.1
     )
@@ -101,14 +101,14 @@ function run_evolutionary_experiment()
     end
 
     # 4. Save Data and Plots
-    csv_path = "Project/Data/2026-04-09_Evolutionary_Dose_Sweep_Results.csv" 
+    csv_path = "Project/Data/2026-04-20_Evolutionary_Dose_Sweep_Results.csv" 
     CSV.write(csv_path, results_df)
     println("\nData successfully saved to: ", csv_path)
     
     println("Generating Plot...")
     final_plot = p1 
     
-    plot_path = "Project/Figures/2026-04-09_Evolutionary_Dose_Sweep_Plot.png"
+    plot_path = "Project/Figures/2026-04-20_Evolutionary_Dose_Sweep_Plot.png"
     savefig(final_plot, plot_path)
     println("Plot successfully saved to: ", plot_path)
     
