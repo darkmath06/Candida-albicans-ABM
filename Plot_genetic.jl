@@ -1,63 +1,75 @@
 # ==========================================
 # POST-SIMULATION ANALYSIS: BOXPLOTS
 # ==========================================
-# This is a standalone script to generate boxplots directly 
-# from the saved CSV data without running the core model.
+# Standalone script to generate boxplots from CSV data.
+# Optimized to handle "Extinction" events (NaNs) without crashing.
 
 using CSV
 using DataFrames
-using StatsPlots # Required for the @df macro and grouped boxplots
+using StatsPlots
+using Statistics
 
 function generate_evolutionary_boxplots()
-    # The file path to the CSV you want to analyze
-    csv_path = "Project/Data/2026-04-20_Evolutionary_Dose_Sweep_Results.csv" 
+    csv_path = "Project/Data/2026-04-21_Evolutionary_Dose_Sweep_Results.csv" 
     
-    println("Loading data from: ", csv_path)
-    
-    # Safety check
     if !isfile(csv_path)
         println("Error: File not found at $csv_path.")
-        println("Make sure the CSV is in the exact same folder as this script, or update the path!")
         return
     end
 
-    # Read the CSV into a DataFrame
+    # 1. Load data
     df = CSV.read(csv_path, DataFrame)
     
-    # 1. Clean the Data
-    # Filter out any NaN or Missing values (this happens when a population goes completely extinct)
-    df_valid = filter(row -> !ismissing(row.MeanSusceptibility) && !isnan(row.MeanSusceptibility), df)
+    # 2. Force-Clean the Data
+    # We create a categorical label for the X-axis to prevent scaling issues
+    # and handle cases where a group is 100% NaNs.
+    df_clean = DataFrame(DoseLabel=String[], MutationRate=Float64[], Trait=Float64[])
     
-    # 2. Extract X-Axis Ticks
-    # Automatically find which diffusion rates were tested to make the x-axis look clean
-    tested_rates = sort(unique(df_valid.AntifungalDose))
+    for sdf in groupby(df, [:AntifungalDose, :MutationRate])
+        dose_val = sdf.AntifungalDose[1]
+        mut_val = sdf.MutationRate[1]
+        
+        # Get all non-missing, non-NaN values
+        raw_vals = sdf.MeanSusceptibility
+        valid_vals = filter(x -> !ismissing(x) && !isnan(x), raw_vals)
+        
+        if isempty(valid_vals)
+            # FORCE PLOT: If a group is entirely extinct, we add one dummy value 
+            # outside the plot range so the math engine sees "data" but the box is invisible.
+            push!(df_clean, (DoseLabel=string(dose_val), MutationRate=mut_val, Trait=-0.05))
+        else
+            for v in valid_vals
+                push!(df_clean, (DoseLabel=string(dose_val), MutationRate=mut_val, Trait=v))
+            end
+        end
+    end
     
-    println("Data cleaned. Generating Boxplot...")
+    println("Plotting $(nrow(df_clean)) rows of processed data...")
     
-    # 3. Create the Grouped Boxplot
-    final_boxplot = @df df_valid groupedboxplot(
-        :AntifungalDose, 
-        :MeanSusceptibility, 
+    # 3. Generate Plot
+    # We use 'boxplot' with 'group' as it's more stable for single-categorical axes
+    p = @df df_clean boxplot(
+        :DoseLabel, 
+        :Trait, 
         group = :MutationRate,
-        title = "Evolution of Apoptosis vs. Antifungal Dose\n(Boxplot Distribution)",
-        xlabel = "Antifungal Dose",
-        ylabel = "Mean Apoptosis Probability (Trait Value)",
+        title = "Evolution of Apoptosis vs. Antifungal Dose\n(Distribution Analysis)",
+        xlabel = "Antifungal Dose (µg/ml)",
+        ylabel = "Mean Apoptosis Probability (Trait)",
         legend = :outertopright,
-        ylims = (0.0, 1.0),
-        xticks = tested_rates, 
-        linewidth = 1.5,
-        outliers = true,     # Show outlier dots
+        ylims = (0.0, 1.0), # This hides our -0.05 placeholders
+        linewidth = 1.2,
+        fillalpha = 0.5,
+        outliers = true,
+        marker = (3, :circle, 0.4), # Jittered dots to see individual replicates
         framestyle = :box
     )
     
-    # 4. Save the Output
-    plot_path = "2026-04-14_Evolutionary_Dose_Sweep_Boxplot.png"
-    savefig(final_boxplot, plot_path)
-    println("Boxplot successfully saved to: ", plot_path)
-    
-    # Display the plot in your viewer/REPL
-    display(final_boxplot)
+    # 4. Save and Show
+    plot_path = "Project/Figures/Evolutionary_Boxplot_Final.png"
+    mkpath("Project/Figures")
+    savefig(p, plot_path)
+    println("Boxplot saved to: ", plot_path)
+    display(p)
 end
 
-# Run the function
 generate_evolutionary_boxplots()

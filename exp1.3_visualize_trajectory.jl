@@ -24,8 +24,8 @@ function visualize_evolutionary_trajectory()
     for i in 1:num_replicates
         alive, apop, necro, mean_susc, history = run_headless_simulation(
             spatial_mode = UNIFORM,
-            source_dose = 0.5,
-            mutation_rate = 0.1, # Try changing this to 0.01 later to see the chaos!
+            source_dose = 0.75,
+            mutation_rate = 0.05, # Try changing this to 0.01 later to see the chaos!
             passages = passages_num,
             passage_fraction = 0.1
         )

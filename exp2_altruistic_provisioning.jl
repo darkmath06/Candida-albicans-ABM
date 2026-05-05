@@ -10,7 +10,7 @@ using Printf
 using Plots 
 
 # Load the core engine
-include("core_model.jl")
+include("C:/Users/Mathi/Downloads/UVA Ams/Project/Code/core_model.jl")
 
 # --- Custom History Tracker ---
 function run_history_simulation(AgentType::Type; kwargs...)
@@ -64,7 +64,7 @@ function run_experiment_2()
     # 1. Define the parameters for the sweep
     nutrient_levels = [4.0, 8.0, 12.0, 16.0] # Famine to Feast
     reservoir_fractions = [0,0.1,0.3, 0.9]    # Low vs High reservoir capacity
-    fixed_dose = 1.5                       # Changed to a lower dose since UNIFORM 100 is instant death
+    fixed_dose = 1.0                       # Changed to a lower dose since UNIFORM 100 is instant death
     
     time_axis = (0:SIMULATION_STEPS) .* TIME_STEP_DT
     
@@ -83,6 +83,9 @@ function run_experiment_2()
     total_runs = length(nutrient_levels) * length(reservoir_fractions)
     current_run = 1
     plot_grid = []
+    
+    # Array to store results temporarily so we can calculate max y-axis
+    simulation_results = []
 
     # 3. Execute Sweep
     for nut in nutrient_levels
@@ -123,30 +126,53 @@ function run_experiment_2()
                 push!(results_df, (nut, res_frac, time_axis[i], "PCD-", alive_minus[i], apop_minus[i], necro_minus[i], td_minus))
             end
             
-            # Generate subplot
-            p = plot(title="Nut: $nut | Res: $res_frac", titlefontsize=9, legend=false, grid=false, xaxis=false, yaxis=false)
-            if res_frac == reservoir_fractions[1]; yaxis!(p, true); ylabel!(p, "Cells"); end
-            if nut == nutrient_levels[end]; xaxis!(p, true); xlabel!(p, "Hours"); end
-            if current_run == 1; plot!(p, legend=:topleft, legendfontsize=6); end
+            # Cache results for plotting later
+            push!(simulation_results, (nut, res_frac, alive_plus, alive_minus, t_phase_hours))
             
-            plot!(p, time_axis, alive_plus, color=:blue, linewidth=2, label="PCD+ Alive")
-            plot!(p, time_axis, alive_minus, color=:red, linewidth=2, label="PCD- Alive")
-            
-            push!(plot_grid, p)
             current_run += 1
         end
     end
     
+    # 3.5 Generate Subplots with a GLOBAL linked y-axis
+    global_max_y = 0.0
+    for res in simulation_results
+        global_max_y = max(global_max_y, maximum(res[3]), maximum(res[4]))
+    end
+    # Add 5% padding to the top of the y-axis
+    global_max_y = max(global_max_y * 1.05, 1.0)
+    
+    current_plot = 1
+    for nut in nutrient_levels
+        for res_frac in reservoir_fractions
+            res = simulation_results[current_plot]
+            _, _, alive_plus, alive_minus, t_phase_hours = res
+            
+            # Generate subplot
+            p = plot(title="Nut: $nut | Res: $res_frac", titlefontsize=9, legend=false, grid=false, xaxis=false, yaxis=false)
+            if res_frac == reservoir_fractions[1]; yaxis!(p, true); ylabel!(p, "Cells"); end
+            if nut == nutrient_levels[end]; xaxis!(p, true); xlabel!(p, "Hours"); end
+            if current_plot == 1; plot!(p, legend=:topleft, legendfontsize=6); end
+            
+            # Apply the GLOBAL y-axis limit
+            plot!(p, ylims=(0, global_max_y))
+            plot!(p, time_axis, alive_plus, color=:blue, linewidth=2, label="PCD+ Alive")
+            plot!(p, time_axis, alive_minus, color=:red, linewidth=2, label="PCD- Alive")
+            
+            push!(plot_grid, p)
+            current_plot += 1
+        end
+    end
+    
     # 4. Save Data and Plots (Updated filenames to reflect sweep)
-    csv_path = "Project/Data/2026-03-23_Exp2_ReservoirSweep_TimeSeries.csv" 
+    csv_path = "C:/Users/Mathi/Downloads/UVA Ams/Project/Data/2026-03-23_Exp2_ReservoirSweep_TimeSeries.csv" 
     CSV.write(csv_path, results_df)
     println("\nData successfully saved to: ", csv_path)
     
-    println("Generating 4x3 Grid Plot...")
+    println("Generating 4x4 Grid Plot...")
     final_plot = plot(plot_grid..., layout=(length(nutrient_levels), length(reservoir_fractions)), size=(1000, 1000), 
                       plot_title="Altruistic Provisioning: Survival vs Starvation & Reservoir Capacity")
     
-    plot_path = "Project/Figures/2026-03-23_Exp2_ReservoirSweep_Grid.png"
+    plot_path = "C:/Users/Mathi/Downloads/UVA Ams/Project/Figures/2026-03-23_Exp2_ReservoirSweep_Grid.png"
     savefig(final_plot, plot_path)
     println("Plot successfully saved to: ", plot_path)
     

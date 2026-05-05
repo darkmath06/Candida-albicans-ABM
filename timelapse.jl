@@ -11,6 +11,8 @@ using StatsBase
 
 # Include the core model mechanics (make sure they are in the same folder!)
 include("core_model_genetic.jl")
+theme(:default) # Or :default for light mode
+
 
 # Helper function to map traits to the requested custom discrete colors
 function get_trait_color(trait::Float64)
@@ -40,8 +42,9 @@ function run_custom_timelapse(dose::Float64, mut::Float64;
     current_traits = nothing
     
     # Track the global step and mean trait over the entire experiment for the line graph
-    global_steps = Int[]
+    global_hours = Float64[]
     mean_trait_history = Float64[]
+    std_trait_history = Float64[] # Added to track standard deviation
     
     # Setup animation and folders
     anim = Animation()
@@ -69,16 +72,23 @@ function run_custom_timelapse(dose::Float64, mut::Float64;
             # Capture frames based on interval
             if step % capture_interval == 0 || step == SIMULATION_STEPS
                 alive_cells_now = filter(a -> a.alive, collect(allagents(model)))
-                mean_trait_now = isempty(alive_cells_now) ? NaN : mean(a.apoptosis_susceptibility for a in alive_cells_now)
+                
+                # Extract traits to calculate mean and std
+                traits_now = [a.apoptosis_susceptibility for a in alive_cells_now]
+                mean_trait_now = isempty(traits_now) ? NaN : mean(traits_now)
+                # Calculate standard deviation (0.0 if only 1 cell, NaN if extinct)
+                std_trait_now = length(traits_now) > 1 ? std(traits_now) : (isempty(traits_now) ? NaN : 0.0)
 
-                # Store data for the line graph
+                # Store data for the line graph (converted to hours)
                 current_global_step = (passage - 1) * SIMULATION_STEPS + step
-                push!(global_steps, current_global_step)
+                push!(global_hours, current_global_step * TIME_STEP_DT)
                 push!(mean_trait_history, mean_trait_now)
+                push!(std_trait_history, std_trait_now) # Store the standard deviation
 
                 # --- LEFT PANEL: Petri Dish ---
                 # Added Mean Trait to the title, disabled colorbar for heatmap, but enabled the legend
-                title_text = "Passage $passage, Step $step\nDose: $dose, Mut: $mut\nMean Trait: $(isnan(mean_trait_now) ? "Extinct" : round(mean_trait_now, digits=3))"
+                current_hour = round(step * TIME_STEP_DT, digits=1)
+                title_text = "Passage $passage, Hour $current_hour\nDose: $dose, Mut: $mut\nMean: $(isnan(mean_trait_now) ? "Extinct" : round(mean_trait_now, digits=3)) | Std: $(isnan(std_trait_now) ? "-" : round(std_trait_now, digits=3))"
                 
                 p_dish = heatmap(1:GRID_SIZE_PX, 1:GRID_SIZE_PX, model.ANTIFUNGAL_layer, 
                                  color=:Greys, colorbar=false, legend=:topright, 
@@ -115,12 +125,13 @@ function run_custom_timelapse(dose::Float64, mut::Float64;
                 end
                 
                 # --- RIGHT PANEL: Live Mean Trait Line Graph ---
-                p_line = plot(global_steps, mean_trait_history,
+                p_line = plot(global_hours, mean_trait_history,
+                              ribbon=std_trait_history, fillalpha=0.3, # This creates the shaded Std Dev area
                               title="Population Trait Evolution",
-                              xlabel="Global Time (Steps)",
-                              ylabel="Mean Apoptosis Prob",
+                              xlabel="Global Time (Hours)",
+                              ylabel="Apoptosis Prob (Mean ± Std)",
                               ylims=(0.0, 1.0),
-                              xlims=(0, passages * SIMULATION_STEPS),
+                              xlims=(0, passages * SIMULATION_STEPS * TIME_STEP_DT),
                               legend=false, linewidth=3, color=:black)
                 
                 # Combine them side-by-side
@@ -142,7 +153,7 @@ function run_custom_timelapse(dose::Float64, mut::Float64;
             break 
         end
     end
-    
+     
     # Save the final compiled GIF
     output_path = "Project/Figures/PetriDish/$(run_id).gif"
     gif(anim, output_path, fps=fps)
@@ -154,7 +165,7 @@ end
 # ==========================================
 
 # Define the specific combination you want to visualize:
-TARGET_DOSE = 0 #make sure it is an decimal
+TARGET_DOSE = 1.0 #make sure it is an decimal
 TARGET_MUTATION_RATE = 0.05
 PASSAGES_TO_RUN = 5
 

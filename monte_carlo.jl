@@ -61,11 +61,11 @@ function run_experiment_7()
     println("--- Starting Experiment 7: Monte Carlo Modifier Sweep ---")
     
     # 1. Setup Parameters
-    NUM_RUNS = 10 # Adjust to 10 for a quick test if it takes too long
+    NUM_RUNS = 50 # Adjust to 10 for a quick test if it takes too long
     
     # We use Point Sources because spatial gradients are where the Sponge Effect shines
     test_mode = UNIFORM
-    test_dose = 1.75 
+    test_dose = 1.5 
     
 
     death_modifiers = [0.1, 0.2, 0.3, 1]

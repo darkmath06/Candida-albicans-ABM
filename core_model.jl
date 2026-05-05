@@ -144,7 +144,7 @@ end
 
 function initialize_model(AgentType::Type, starting_positions::Vector{Tuple{Int, Int}};
     init_nutrient = 12, spatial_mode = POINT_SOURCES, source_dose = 10000.0,
-    max_binding_apop = 2.5, max_binding_necro = 0.42, apop_leak_rate = 0.5,
+    max_binding_apop = 0.42, max_binding_necro = 0.42, apop_leak_rate = 0.5,
     apop_duration = 2.0, apop_point_of_no_return = 1.0, resuscitation_thresh = 0, fungistatic_thresh = 0.75,
     reservoir_fraction = 0.1, diffusion_antifungal = 0.3, pcd_minus_death_modifier = 0.5)
 

@@ -32,7 +32,7 @@ const ANTIFUNGAL_SOURCE_RADIUS = 2 # A radius of 2 makes a 5x5 injection patch a
 
 # --- Nutrient Exposure Settings ---
 const NUTRIENT_EXPOSURE_MODE = SINGLE_SHOCK
-const NUTRIENT_INJECTION_STEP = 0          # Step 0 means it just uses the initial agar nutrients without mid-sim replenishments
+const NUTRIENT_INJECTION_STEP = 24          # Step 0 means it just uses the initial agar nutrients without mid-sim replenishments
 const NUTRIENT_PULSE_INTERVAL = 36         # If set to PULSATED, how often nutrients are replenished
 
 # --- Biomass Capacity Limits ---
@@ -40,7 +40,7 @@ const MAX_BIOMASS_PER_PX = 3
 
 # --- Environment Levels ---
 const INIT_NUTRIENT_LEVEL = 12.0 
-const INIT_ANTIFUNGAL_LEVEL = 5.0 # Used if SPATIAL_MODE is UNIFORM
+const INIT_ANTIFUNGAL_LEVEL = 1.5 # Used if SPATIAL_MODE is UNIFORM
     
 # --- Diffusion Settings ---
 const DIFFUSION_NUTRIENT = 0.57
@@ -68,20 +68,19 @@ const MAX_ANTIFUNGAL_BINDING_DEAD_NECRO = 0.42 # Capacity for dead necrotic/star
 const K_ON_ANTIFUNGAL = 0.01              # Adsorption rate constant
 const K_OFF_ANTIFUNGAL = 0.005            # Desorption rate constant
 
-# --- Stress, Apoptosis & Necrosis (UPDATED TO MATCH 1999 PAPER) ---
-const ANTIFUNGAL_DAMAGE_THRESHOLD = 0.3      # Threshold to start accumulating damage (x-intercept)
-const FUNGISTATIC_THRESHOLD = 0.5            # Above this dose, cells halt growth and replication ("Zombie" state)
-const RESUSCITATION_THRESHOLD = 1.0          # Below this dose, apoptotic cells can abort cell death and recover
+# --- Stress, Apoptosis & Necrosis ---
+const ANTIFUNGAL_DAMAGE_THRESHOLD = 0.5      # Threshold to start accumulating damage (x-intercept)
+const FUNGISTATIC_THRESHOLD = 0.75           # Above this dose, cells halt growth and replication ("Zombie" state)
 const STRESS_START_TIME = 0.0                # Hours of exposure before death risks begin
 const APOPTOSIS_DURATION = 2.0               # Hours the apoptosis process takes
 const APOPTOSIS_LEAK_RATE = 0.5              # Fraction of current internal nutrients leaked per hour during apoptosis
 const ASSAY_DURATION_HOURS = 200/60          # Calibration time for dose-response percentages
+const PCD_MINUS_DEATH_MODIFIER = 0.5         # Fractional death reduction for PCD- cells
 
 # --- Continuous Mechanistic Death Parameters ---
 const TOTAL_DEATH_MAX = 0.999        # Caps at 99.9%
 const TOTAL_DEATH_STEEPNESS = 0.8    # How fast the colony dies
-const TOTAL_DEATH_C50 = 4          # Dose where 50% of cells die (Shifted down to match Liao 1999 Data)
-
+const TOTAL_DEATH_C50 = 2.5          # Dose where 50% of cells die (Shifted to match core_model)
 const NECRO_SLOPE = 0.056571         # Linear increase of necrosis per µg/ml
 const NECRO_INTERCEPT = -0.036       # Y-intercept of the necrosis line
 
@@ -175,32 +174,20 @@ end
 # ==========================================
 
 function get_death_rates(c::Float64)
-    # Biological cutoff: no damage below threshold
     if c < ANTIFUNGAL_DAMAGE_THRESHOLD
         return 0.0, 0.0
     end
     
-    # 1. Calculate the TOTAL percentage of cells dying (Logistic S-curve)
     total_death = TOTAL_DEATH_MAX / (1.0 + exp(-TOTAL_DEATH_STEEPNESS * (c - TOTAL_DEATH_C50)))
-    
-    # 2. Calculate Necrosis using the linear trendline
     necro_raw = (NECRO_SLOPE * c) + NECRO_INTERCEPT
     
-    # Bound necrosis so it doesn't drop below 0 or exceed the total death fraction
     target_necro_frac = clamp(necro_raw, 0.0, total_death)
-    
-    # 3. Apoptosis is simply the remaining death
     target_apop_frac = total_death - target_necro_frac
-
     target_total_frac = min(0.999, total_death)
     
-    # Minor safety check to prevent extremely small rates from eating computation
     if target_total_frac <= 0.01; return 0.0, 0.0; end
     
-    # Convert the observed assay fraction to a continuous hourly exponential rate
     hourly_total_rate = -log(1.0 - target_total_frac) / ASSAY_DURATION_HOURS
-    
-    # Distribute the rate according to the probability ratio
     ratio_apop = target_apop_frac / total_death
     ratio_necro = target_necro_frac / total_death
     
@@ -215,28 +202,21 @@ function apply_stress!(agent::PCDPlusCell, local_ANTIFUNGAL::Float64, model)
     end
 
     if agent.is_apoptotic
-        # --- NEW: RESUSCITATION MECHANIC ---
-        if local_ANTIFUNGAL < RESUSCITATION_THRESHOLD
-            # Drug concentration has dropped; cell aborts apoptosis and recovers!
-            agent.is_apoptotic = false
-            agent.apoptosis_timer = 0.0
-        else
-            agent.apoptosis_timer += TIME_STEP_DT
-            
-            # --- Gradual Nutrient Leak (Membrane Permeabilization) ---
-            x, y = agent.pos
-            leak_fraction = min(1.0, APOPTOSIS_LEAK_RATE * TIME_STEP_DT)
-            leak_amount = agent.internal_nutrients * leak_fraction
-            agent.internal_nutrients -= leak_amount
-            model.nutrient_layer[y, x] += leak_amount
+        agent.apoptosis_timer += TIME_STEP_DT
+        
+        # --- Gradual Nutrient Leak (Membrane Permeabilization) ---
+        x, y = agent.pos
+        leak_fraction = min(1.0, APOPTOSIS_LEAK_RATE * TIME_STEP_DT)
+        leak_amount = agent.internal_nutrients * leak_fraction
+        agent.internal_nutrients -= leak_amount
+        model.nutrient_layer[y, x] += leak_amount
 
-            if agent.apoptosis_timer >= APOPTOSIS_DURATION
-                set_dead_apoptosis!(agent)
-                
-                # --- NUTRIENT RECYCLING ---
-                model.nutrient_layer[y, x] += agent.internal_nutrients
-                agent.internal_nutrients = 0.0
-            end
+        if agent.apoptosis_timer >= APOPTOSIS_DURATION
+            set_dead_apoptosis!(agent)
+            
+            # --- NUTRIENT RECYCLING ---
+            model.nutrient_layer[y, x] += agent.internal_nutrients
+            agent.internal_nutrients = 0.0
         end
     else
         if agent.ANTIFUNGAL_exposure_time >= STRESS_START_TIME
@@ -275,13 +255,13 @@ function apply_stress!(agent::PCDMinusCell, local_ANTIFUNGAL::Float64, model)
 
     if agent.ANTIFUNGAL_exposure_time >= STRESS_START_TIME
         rate_apop, rate_necro = get_death_rates(local_ANTIFUNGAL)
-        
-        # The PCD- cell still takes fatal damage based on total toxicity, 
-        # but because it cannot undergo apoptosis, all death is routed via necrosis.
         total_rate = rate_apop + rate_necro
         
-        if total_rate > 0
-            prob_death = 1.0 - exp(-total_rate * TIME_STEP_DT)
+        # Apply the PCD- death modifier
+        adjusted_rate = total_rate * PCD_MINUS_DEATH_MODIFIER
+        
+        if adjusted_rate > 0
+            prob_death = 1.0 - exp(-adjusted_rate * TIME_STEP_DT)
             if rand() < prob_death
                 agent.alive = false
                 agent.dead_necrosis = true
@@ -322,10 +302,10 @@ function complex_model_step!(model)
                 maintenance_cost = MAINTENANCE_COEFF * agent.biomass * TIME_STEP_DT
                 n_demands[agent.id] = maintenance_cost + reservoir_deficit
             else
-                # --- NEW: FUNGISTATIC / ZOMBIE STATE ---
+                # --- FUNGISTATIC / ZOMBIE STATE ---
                 if local_f >= FUNGISTATIC_THRESHOLD
-                    growth_demand_n = 0.0 # Growth is completely halted
-                    reservoir_deficit = 0.0 # Zombie cells stop active stockpiling; they only scavenge for immediate maintenance
+                    growth_demand_n = 0.0 
+                    reservoir_deficit = 0.0 
                 else
                     if agent.biomass < DIVISION_BIOMASS
                         mu = MU_MAX * (local_n / (MONOD_KS + local_n))
@@ -457,7 +437,7 @@ function complex_model_step!(model)
                                 truly_empty = filter(s -> s.bio == 0.0, available_spots)
                                 candidate_pool = !isempty(truly_empty) ? truly_empty : available_spots
                                 
-                                # --- FIX: Surface Tension Weighting ---
+                                # --- Surface Tension Weighting ---
                                 weights = map(candidate_pool) do s
                                     occupied_neighbors = count(nearby_positions(s.pos, model, 1)) do np
                                         cur_b = sum((a.biomass for a in agents_in_position(np, model)), init=0.0)
@@ -582,7 +562,7 @@ end
 function generate_subplots(model, title_prefix::String, step::Int)
     alive_agents = [a for a in allagents(model) if a.alive]
     
-    # Tiny random jitter added to coordinates strictly for plotting, so overlapping cells at the same grid px are visibly distinguished
+    # Tiny random jitter added to coordinates strictly for plotting
     jitter(val) = val + 0.4 * (rand() - 0.5)
 
     healthy_x = Float64[jitter(a.pos[1]) for a in alive_agents if !is_apoptotic(a)]
@@ -606,7 +586,6 @@ function generate_subplots(model, title_prefix::String, step::Int)
     n_plot[1, 1] = INIT_NUTRIENT_LEVEL; n_plot[1, 2] = 0.0
 
     f_plot = copy(model.ANTIFUNGAL_layer)
-    # Dynamically adjust the clims so point-sources with high doses don't just wash out the color map
     f_max = maximum(model.ANTIFUNGAL_layer)
     f_clim_max = f_max > 0 ? max(INIT_ANTIFUNGAL_LEVEL, f_max) : INIT_ANTIFUNGAL_LEVEL
 
@@ -642,15 +621,13 @@ function generate_subplots(model, title_prefix::String, step::Int)
         Plots.scatter!(p3, healthy_x, healthy_y, label=healthy_label, color=healthy_color, markersize=2, markerstrokewidth=0)
     end
 
-    # --- NEW: Biomass Density Plot ---
-    # We create a 2D matrix summing the biomass of all agents in each pixel.
+    # Biomass Density Plot
     density_grid = zeros(Float64, GRID_SIZE_PX, GRID_SIZE_PX)
     for a in allagents(model)
         x, y = a.pos
         density_grid[y, x] += a.biomass
     end
 
-    # Map colors: 0=White, 1=Green, 2=Yellow, 3=Orange
     density_colors = cgrad([:white, :green, :yellow, :orange], [0.0, 0.33, 0.66, 1.0])
     
     p4 = Plots.heatmap(density_grid, title="$title_prefix Biomass Density", 
@@ -684,7 +661,6 @@ function main()
     history_plus = Dict(:alive => Int[], :dead_apop => Int[], :dead_necro => Int[], :dead_starve => Int[], :total => Int[])
     history_minus = Dict(:alive => Int[], :dead_apop => Int[], :dead_necro => Int[], :dead_starve => Int[], :total => Int[])
 
-    # Push Step 0 data
     push!(history_plus[:alive], count(a -> a.alive, allagents(model_plus)))
     push!(history_plus[:dead_apop], count(is_dead_apoptosis, allagents(model_plus)))
     push!(history_plus[:dead_necro], count(a -> a.dead_necrosis, allagents(model_plus)))
@@ -697,8 +673,6 @@ function main()
     push!(history_minus[:dead_starve], count(a -> a.dead_starvation, allagents(model_minus)))
     push!(history_minus[:total], nagents(model_minus))
 
-    # --- Initialize Mass Tracking ---
-    # Accounts for the agar grid + the initial biomass and internal reservoirs of the starting cells
     injected_n_plus = (GRID_SIZE_PX * GRID_SIZE_PX * INIT_NUTRIENT_LEVEL) + (NEWBORN_BIOMASS / YIELD_TRUE) + (NEWBORN_BIOMASS * RESERVOIR_FRACTION)
     injected_n_minus = injected_n_plus
     injected_f_plus = 0.0
@@ -730,12 +704,10 @@ function main()
 
         # --- Apply the injections ---
         if inject_nutrient_now
-            # Only print the message for discrete events to avoid console spam during CONTINUOUS
             if step == NUTRIENT_INJECTION_STEP || NUTRIENT_EXPOSURE_MODE == PULSATED
                 println("--- REPLENISHING NUTRIENTS AT STEP $step ---")
             end
             
-            # Track net newly added mass (target layer minus current layer)
             injected_n_plus += sum(INIT_NUTRIENT_LEVEL .- model_plus.nutrient_layer)
             injected_n_minus += sum(INIT_NUTRIENT_LEVEL .- model_minus.nutrient_layer)
             
@@ -749,14 +721,12 @@ function main()
             end
             
             if ANTIFUNGAL_SPATIAL_MODE == UNIFORM
-                # Original logic: flood the entire grid uniformly
                 injected_f_plus += sum(INIT_ANTIFUNGAL_LEVEL .- model_plus.ANTIFUNGAL_layer)
                 injected_f_minus += sum(INIT_ANTIFUNGAL_LEVEL .- model_minus.ANTIFUNGAL_layer)
                 
                 model_plus.ANTIFUNGAL_layer .= INIT_ANTIFUNGAL_LEVEL
                 model_minus.ANTIFUNGAL_layer .= INIT_ANTIFUNGAL_LEVEL
             elseif ANTIFUNGAL_SPATIAL_MODE == POINT_SOURCES
-                # New logic: Inject concentrated dose at specific coordinates with a specified radius
                 for (cx, cy) in ANTIFUNGAL_SOURCES
                     for dx in -ANTIFUNGAL_SOURCE_RADIUS:ANTIFUNGAL_SOURCE_RADIUS
                         for dy in -ANTIFUNGAL_SOURCE_RADIUS:ANTIFUNGAL_SOURCE_RADIUS
@@ -766,7 +736,6 @@ function main()
                                 model_plus.ANTIFUNGAL_layer[sy, sx] += ANTIFUNGAL_SOURCE_DOSE
                                 model_minus.ANTIFUNGAL_layer[sy, sx] += ANTIFUNGAL_SOURCE_DOSE
                                 
-                                # Accurately track the mass added
                                 injected_f_plus += ANTIFUNGAL_SOURCE_DOSE
                                 injected_f_minus += ANTIFUNGAL_SOURCE_DOSE
                             end
@@ -779,14 +748,12 @@ function main()
         Agents.step!(model_plus, 1)
         Agents.step!(model_minus, 1)
 
-        # Record metrics for Plus
         push!(history_plus[:alive], count(a -> a.alive, allagents(model_plus)))
         push!(history_plus[:dead_apop], count(is_dead_apoptosis, allagents(model_plus)))
         push!(history_plus[:dead_necro], count(a -> a.dead_necrosis, allagents(model_plus)))
         push!(history_plus[:dead_starve], count(a -> a.dead_starvation, allagents(model_plus)))
         push!(history_plus[:total], nagents(model_plus))
 
-        # Record metrics for Minus
         push!(history_minus[:alive], count(a -> a.alive, allagents(model_minus)))
         push!(history_minus[:dead_apop], count(is_dead_apoptosis, allagents(model_minus)))
         push!(history_minus[:dead_necro], count(a -> a.dead_necrosis, allagents(model_minus)))
@@ -800,7 +767,6 @@ function main()
             println("Progress: Step $step / $SIMULATION_STEPS")
         end
 
-        # Plot must be the last evaluated expression for the @animate macro
         Plots.plot(p1_n, p1_f, p1_c, p1_p, p2_n, p2_f, p2_c, p2_p, layout=(2, 4), size=(1600, 800))
     end every every_n_steps  
 
@@ -811,13 +777,14 @@ function main()
     # ==========================================
     # --- CALCULATE EXPERIMENTAL DOUBLING TIME ---
     # ==========================================
-    # Calculate based on the unhindered growth phase before antifungal injection
     t_phase_hours = ANTIFUNGAL_INJECTION_STEP * TIME_STEP_DT
     
     n0_plus = history_plus[:alive][1]
-    nt_plus = history_plus[:alive][ANTIFUNGAL_INJECTION_STEP + 1] # +1 because array includes Step 0
+    nt_plus = history_plus[:alive][ANTIFUNGAL_INJECTION_STEP + 1] 
+    td_plus_str = "N/A"
     if nt_plus > n0_plus
         td_plus = t_phase_hours * log(2) / log(nt_plus / n0_plus)
+        td_plus_str = "$(round(td_plus, digits=2))h"
         println("=> PCD+ Estimated Doubling Time (pre-injection): ", round(td_plus, digits=2), " hours")
     else
         println("=> PCD+ Estimated Doubling Time: N/A (no net growth)")
@@ -825,8 +792,10 @@ function main()
 
     n0_minus = history_minus[:alive][1]
     nt_minus = history_minus[:alive][ANTIFUNGAL_INJECTION_STEP + 1]
+    td_minus_str = "N/A"
     if nt_minus > n0_minus
         td_minus = t_phase_hours * log(2) / log(nt_minus / n0_minus)
+        td_minus_str = "$(round(td_minus, digits=2))h"
         println("=> PCD- Estimated Doubling Time (pre-injection): ", round(td_minus, digits=2), " hours")
     else
         println("=> PCD- Estimated Doubling Time: N/A (no net growth)")
@@ -875,34 +844,26 @@ function main()
     @printf("    -> Bound(Alive): %.2f\n", f_minus.live)
     @printf("    -> Bound(Dead):  %.2f\n\n", f_minus.dead)
 
-  # ==========================================
+    # ==========================================
     # --- GENERATE REQUESTED DYNAMICS PLOTS ---
     # ==========================================
     time_axis = (0:SIMULATION_STEPS) .* TIME_STEP_DT
 
     # Plot 1: Population (Alive)
-    p_pop = Plots.plot(title="Population (Alive) Over Time", xlabel="Time (hrs)", ylabel="Cells", linewidth=2)
-    Plots.plot!(p_pop, time_axis, history_plus[:alive], label="PCD+ Alive", color=:blue)
-    Plots.plot!(p_pop, time_axis, history_minus[:alive], label="PCD- Alive", color=:red)
+    p_pop = Plots.plot(title="C. albicans Growth Under Control Conditions", xlabel="Time (hrs)", ylabel="Cells", linewidth=2, legend=:topleft)
+    Plots.plot!(p_pop, time_axis, history_plus[:alive], label="PCD+ Alive (Td: $(td_plus_str))", color=:blue)
+    Plots.plot!(p_pop, time_axis, history_minus[:alive], label="PCD- Alive (Td: $(td_minus_str))", color=:red)
 
     # Plot 2: Dead Cells On Grid (Apop, Necro, and Starved)
-    p_death = Plots.plot(title="Dead Cells On Grid Over Time", xlabel="Time (hrs)", ylabel="Dead Cells", linewidth=2)
+    p_death = Plots.plot(title="C. albicans Mortality Under Control Conditions", xlabel="Time (hrs)", ylabel="Dead Cells", linewidth=2, legend=:topleft)
     Plots.plot!(p_death, time_axis, history_plus[:dead_apop], label="PCD+ Apop", color=:orange)
     Plots.plot!(p_death, time_axis, history_plus[:dead_necro], label="PCD+ Necro", color=:black)
     Plots.plot!(p_death, time_axis, history_minus[:dead_necro], label="PCD- Necro", color=:gray, linestyle=:dash)
     Plots.plot!(p_death, time_axis, history_plus[:dead_starve], label="PCD+ Starved", color=:magenta)
     Plots.plot!(p_death, time_axis, history_minus[:dead_starve], label="PCD- Starved", color=:purple, linestyle=:dash)
 
-    # Plot 3: Survivability (% Alive)
-    surv_plus = [tot > 0 ? (a / tot) * 100.0 : 0.0 for (a, tot) in zip(history_plus[:alive], history_plus[:total])]
-    surv_minus = [tot > 0 ? (a / tot) * 100.0 : 0.0 for (a, tot) in zip(history_minus[:alive], history_minus[:total])]
-    
-    p_surv = Plots.plot(title="Survivability (% Alive) Over Time", xlabel="Time (hrs)", ylabel="Survival (%)", linewidth=2, ylims=(0, 105))
-    Plots.plot!(p_surv, time_axis, surv_plus, label="PCD+", color=:blue)
-    Plots.plot!(p_surv, time_axis, surv_minus, label="PCD-", color=:red)
-
-    # Combine and save
-    final_plot = Plots.plot(p_pop, p_death, p_surv, layout=(3, 1), size=(800, 1000))
+    # Combine and save (Now 2x1 instead of 3x1)
+    final_plot = Plots.plot(p_pop, p_death, layout=(2, 1), size=(800, 700))
     Plots.savefig(final_plot, "population_dynamics.png")
     println("Success! Dynamics plots saved as: population_dynamics.png")
 end
