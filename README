@@ -1,0 +1,65 @@
+Candida albicans Agent-Based Model (ABM)
+
+This repository contains an Agent-Based Model built in Julia to simulate the population dynamics and evolutionary survival strategies of single-celled organisms (Candida albicans). Specifically, it investigates whether Programmed Cell Death (PCD) provides a colony-level survival advantage under antifungal stress.
+
+📂 Repository Structure
+
+To ensure the scripts run correctly, maintain the following folder structure:
+
+Project_Root/
+│
+├── Code/
+│   ├── core_model.jl                  # The main ABM mechanics, agent definitions, and step logic
+│   ├── experiment_uniform_nutrient.jl # The experiment script running the sweep
+│   └── ... (other experiment scripts)
+│
+├── Data/                              # CSV outputs will be automatically saved here
+│
+└── Figures/                           # Plot images will be automatically saved here
+
+
+⚙️ Prerequisites & Setup
+
+Install Julia: Download and install Julia from julialang.org.
+
+Install Required Packages: Open your terminal or command prompt, type julia to open the REPL, and run the following commands to install the necessary libraries:
+
+using Pkg
+Pkg.add("Agents")
+Pkg.add("DataFrames")
+Pkg.add("CSV")
+Pkg.add("Plots")
+Pkg.add("StatsBase")
+Pkg.add("Images")
+Pkg.add("ImageFiltering")
+
+
+🚀 How to Run the Experiments
+
+Because the scripts use universal relative pathing (@__DIR__), you can run them from anywhere on your computer.
+
+Option 1: Using the Terminal / Command Prompt
+
+Open your terminal.
+
+Navigate to the folder containing the scripts (or run them directly).
+
+Execute the script:
+
+julia Code/experiment_uniform_nutrient.jl
+
+
+Option 2: Using an IDE (VS Code, Jupyter, etc.)
+Simply open the experiment script (e.g., experiment_uniform_nutrient.jl) in your preferred editor and run the file.
+
+📊 Outputs
+
+When you run an experiment script:
+
+It automatically includes the core_model.jl engine.
+
+It executes a sweep across defined parameters (e.g., Antifungal Doses vs. Apoptosis Binding Capacity).
+
+A .csv file containing the step-by-step population data is saved to the Data/ folder.
+
+A grid plot (.png) visually comparing the survival curves is saved to the Figures/ folder.
