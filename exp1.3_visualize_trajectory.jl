@@ -1,5 +1,6 @@
 using Plots 
-include("core_model_genetic.jl")
+include(joinpath(@__DIR__, "core_model_genetic.jl"))
+
 
 function visualize_evolutionary_trajectory()
     println("Running 15 replicate simulations to visualize evolutionary variance...")
@@ -45,8 +46,10 @@ function visualize_evolutionary_trajectory()
               marker=:circle)
     end
     
-    plot_path = "Project/Figures/2026-04-09_Evolutionary_Trajectory_15x.png"
-    mkpath("Project/Figures")
+    fig_dir = joinpath(@__DIR__, "..", "Figures")
+    mkpath(fig_dir) # Automatically creates the "Figures" folder if it doesn't exist yet!
+    
+    plot_path = joinpath(fig_dir, "2026-04-09_Evolutionary_Trajectory_15x.png")
     savefig(p, plot_path)
     
     println("\nSaved trajectory visualization to: ", plot_path)

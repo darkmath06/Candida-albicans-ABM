@@ -11,7 +11,7 @@ using Printf
 using Plots 
 
 # Load the core engine
-include("core_model.jl")
+include(joinpath(@__DIR__, "core_model.jl"))
 
 # --- Custom History Tracker ---
 function run_history_simulation(AgentType::Type; kwargs...)
@@ -146,7 +146,10 @@ function run_experiment_3()
     end
     
     # 4. Save Data and Plots
-    csv_path = "Project/Data/2026-03-27_Exp3_DiffusionDose_Spatial_TimeSeries.csv" 
+    data_dir = joinpath(@__DIR__, "..", "Data")
+    mkpath(data_dir) # Automatically creates the "Data" folder if it doesn't exist yet!
+    
+    csv_path = joinpath(data_dir, "2026-03-27_Exp3_DiffusionDose_Spatial_TimeSeries.csv") 
     CSV.write(csv_path, results_df)
     println("\nData successfully saved to: ", csv_path)
     
@@ -154,7 +157,10 @@ function run_experiment_3()
     final_plot = plot(plot_grid..., layout=(length(configs), length(diffusion_rates)), size=(1200, 1000), 
                       plot_title="Survival vs Spatial Dose & Antifungal Diffusion Rate")
     
-    plot_path = "Project/Figures/2026-03-27_Exp3_DiffusionDose_Spatial_Grid.png"
+    fig_dir = joinpath(@__DIR__, "..", "Figures")
+    mkpath(fig_dir) # Automatically creates the "Figures" folder if it doesn't exist yet!
+    
+    plot_path = joinpath(fig_dir, "2026-03-27_Exp3_DiffusionDose_Spatial_Grid.png")
     savefig(final_plot, plot_path)
     println("Plot successfully saved to: ", plot_path)
     

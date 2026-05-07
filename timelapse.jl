@@ -10,7 +10,7 @@ using Agents
 using StatsBase
 
 # Include the core model mechanics (make sure they are in the same folder!)
-include("core_model_genetic.jl")
+include(joinpath(@__DIR__, "core_model_genetic.jl"))
 theme(:default) # Or :default for light mode
 
 
@@ -155,7 +155,9 @@ function run_custom_timelapse(dose::Float64, mut::Float64;
     end
      
     # Save the final compiled GIF
-    output_path = "Project/Figures/PetriDish/$(run_id).gif"
+    fig_dir = joinpath(@__DIR__, "..", "Figures", "PetriDish")
+    mkpath(fig_dir) # Automatically creates the folder if it doesn't exist yet!
+    output_path = joinpath(fig_dir, "$(run_id).gif")
     gif(anim, output_path, fps=fps)
     println("Saved timelapse to: $output_path")
 end
@@ -165,8 +167,8 @@ end
 # ==========================================
 
 # Define the specific combination you want to visualize:
-TARGET_DOSE = 1.0 #make sure it is an decimal
-TARGET_MUTATION_RATE = 0.05
+TARGET_DOSE = 0.5 #make sure it is an decimal
+TARGET_MUTATION_RATE = 0.1
 PASSAGES_TO_RUN = 5
 
 # Create a clear name for the resulting file

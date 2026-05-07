@@ -10,7 +10,7 @@ using Plots
 using Statistics
 
 # Import the model (pointing to where your CandidaCell logic currently is)
-include("core_model_genetic.jl")
+include(joinpath(@__DIR__, "core_model_genetic.jl"))
 
 function run_evolutionary_sweep(;
     # Define the ranges for the parameters you want to test
@@ -100,14 +100,20 @@ function run_evolutionary_experiment()
     end
 
     # 4. Save Data and Plots
-    csv_path = "Project/Data/2026-04-08_Evolutionary_Sweep_Results.csv" 
+    data_dir = joinpath(@__DIR__, "..", "Data")
+    mkpath(data_dir) # Automatically creates the "Data" folder if it doesn't exist yet!
+
+    csv_path = joinpath(data_dir, "2026-04-08_Evolutionary_Sweep_Results.csv")
     CSV.write(csv_path, results_df)
     println("\nData successfully saved to: ", csv_path)
     
     println("Generating Plot...")
     final_plot = p1 
     
-    plot_path = "Project/Figures/2026-04-08_Evolutionary_Sweep_Plot.png"
+    fig_dir = joinpath(@__DIR__, "..", "Figures")
+    mkpath(fig_dir) # Automatically creates the "Figures" folder if it doesn't exist yet!
+    
+    plot_path = joinpath(fig_dir, "2026-04-08_Evolutionary_Sweep_Plot.png")
     savefig(final_plot, plot_path)
     println("Plot successfully saved to: ", plot_path)
     

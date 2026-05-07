@@ -1,9 +1,8 @@
 # ==========================================
 # EXPERIMENT 7: Stochastic Survival Analysis (Monte Carlo)
 # ==========================================
-# Goal: Run Monte Carlo simulations sweeping through the 
-# PCD- Death Rate Modifier to find the exact "Cost of Altruism" 
-# tipping point where Kin Shielding beats the Selfish Advantage.
+# Goal: Run Monte Carlo simulations sweeping through different
+# Antifungal Doses to find the probabilistic tipping point of survival.
 
 using DataFrames
 using CSV
@@ -13,8 +12,8 @@ using StatsPlots # Required for groupedbar
 using Random
 using Statistics
 
-# Load the core engine
-include("core_model.jl")
+# Load the core engine robustly
+include(joinpath(@__DIR__, "core_model.jl"))
 
 # --- Fast History Tracker ---
 # We only need the 'alive' count for this analysis to save memory over hundreds of runs
@@ -58,17 +57,13 @@ function run_fast_history(AgentType::Type; kwargs...)
 end
 
 function run_experiment_7()
-    println("--- Starting Experiment 7: Monte Carlo Modifier Sweep ---")
+    println("--- Starting Experiment 7: Monte Carlo Dose Sweep ---")
     
     # 1. Setup Parameters
-    NUM_RUNS = 50 # Adjust to 10 for a quick test if it takes too long
+    NUM_RUNS = 10 # Number of stochastic runs per configuration
+    test_doses = [0.8, 1.0, 1.2, 1.5] # The parameter we are sweeping
     
-    # We use Point Sources because spatial gradients are where the Sponge Effect shines
-    test_mode = UNIFORM
-    test_dose = 1.5 
-    
-
-    death_modifiers = [0.1, 0.2, 0.3, 1]
+    test_mode = UNIFORM 
     
     time_axis = (0:SIMULATION_STEPS) .* TIME_STEP_DT
     
@@ -77,35 +72,37 @@ function run_experiment_7()
     pcd_minus_rates = Float64[]
     plot_grid = []
     
-    total_sims = length(death_modifiers) * 2 * NUM_RUNS
+    total_sims = length(test_doses) * 2 * NUM_RUNS
     println("Total individual simulations to run: $total_sims")
     
-    # 2. Execute the Sweep
-    for mod in death_modifiers
-        println("\n==================================")
-        @printf("Testing PCD- Death Modifier: %.1f\n", mod)
-        println("==================================")
-        
+    # Cache to store results for the global Y-axis scaling later
+    simulation_results = []
+
+    # 2. Execute the Monte Carlo Sweep
+    for dose in test_doses
+        println("\n--- Testing Dose: $(dose) ---")
         all_plus_trajectories = []
         all_minus_trajectories = []
         
         for run in 1:NUM_RUNS
-            if run % 20 == 0 || run == 1
+            if run % 5 == 0 || run == 1
                 @printf("  -> Executing Run %d / %d...\n", run, NUM_RUNS)
             end
             
-            # PCD+ Colony (PCD+ ignores the modifier, but we pass it anyway for consistency)
-            alive_plus = run_fast_history(PCDPlusCell, spatial_mode=test_mode, source_dose=test_dose, pcd_minus_death_modifier=mod)
+            # PCD+ Colony
+            alive_plus = run_fast_history(PCDPlusCell, spatial_mode=test_mode, source_dose=dose)
             push!(all_plus_trajectories, alive_plus)
             
-            # PCD- Colony (This is where the modifier actually applies)
-            alive_minus = run_fast_history(PCDMinusCell, spatial_mode=test_mode, source_dose=test_dose, pcd_minus_death_modifier=mod)
+            # PCD- Colony 
+            alive_minus = run_fast_history(PCDMinusCell, spatial_mode=test_mode, source_dose=dose)
             push!(all_minus_trajectories, alive_minus)
         end
         
-        # 3. Calculate Statistics for this Modifier
+        # Cache this data for plotting later
+        push!(simulation_results, (dose, all_plus_trajectories, all_minus_trajectories))
+        
+        # 3. Calculate Statistics for this Dose
         # STRICT SURVIVAL RULE: Population must be > 0 AND must be stable/growing over the last 10 hours (30 steps).
-        # If the population is lower than it was 10 hours ago, it is crashing and counts as a failure.
         survived_plus = sum((traj[end] > 0 && traj[end] >= traj[max(1, end-30)]) for traj in all_plus_trajectories)
         survived_minus = sum((traj[end] > 0 && traj[end] >= traj[max(1, end-30)]) for traj in all_minus_trajectories)
         
@@ -115,24 +112,35 @@ function run_experiment_7()
         push!(pcd_plus_rates, rate_plus)
         push!(pcd_minus_rates, rate_minus)
         
-        @printf("\nResult at Mod %.1f:\n", mod)
-        @printf("  PCD+ Survival: %.1f%%\n", rate_plus)
-        @printf("  PCD- Survival: %.1f%%\n", rate_minus)
+        @printf("  Result Summary -> PCD+: %.1f%% | PCD-: %.1f%%\n", rate_plus, rate_minus)
+    end
+    
+    # 3.5 Calculate Global Y-Axis Maximum for Spaghetti Plots
+    global_max_y = 0.0
+    for res in simulation_results
+        _, plus_trajs, minus_trajs = res
+        for traj in plus_trajs; global_max_y = max(global_max_y, maximum(traj)); end
+        for traj in minus_trajs; global_max_y = max(global_max_y, maximum(traj)); end
+    end
+    global_max_y = max(global_max_y * 1.05, 1.0) # Add 5% padding
+    
+    # 4. Generate Spaghetti Plots
+    for res in simulation_results
+        dose, all_plus_trajectories, all_minus_trajectories = res
         
-        # 4. Generate Spaghetti Plot for this Modifier
         avg_plus = mean(all_plus_trajectories)
         avg_minus = mean(all_minus_trajectories)
         
-        p_traj = plot(title="PCD- Death Rate: $(mod)x", titlefontsize=10, 
-                      xlabel=(mod >= 0.8 ? "Time (Hours)" : ""), 
-                      ylabel=(mod == 0.2 || mod == 0.8 ? "Alive Cells" : ""), 
-                      grid=true, legend=false)
-                      
+        p_traj = plot(title="Antifungal Dose: $(dose)", titlefontsize=10, 
+                        xlabel=(dose >= test_doses[end-1] ? "Time (Hours)" : ""), 
+                        ylabel=(dose == test_doses[1] || dose == test_doses[3] ? "Alive Cells" : ""), 
+                        grid=true, legend=false, ylims=(0, global_max_y))
+                        
         # Add legend only to the first plot
-        if mod == death_modifiers[1]
+        if dose == test_doses[1]
             plot!(p_traj, legend=:topright, legendfontsize=6)
         end
-                      
+                        
         # Plot all faint lines
         for i in 1:NUM_RUNS
             plot!(p_traj, time_axis, all_plus_trajectories[i], color=:blue, alpha=0.1, linewidth=1, label="")
@@ -146,33 +154,36 @@ function run_experiment_7()
         push!(plot_grid, p_traj)
     end
 
-    # 5. Compile and Save Plots
+    # 5. Compile and Save Plots robustly
     println("\nGenerating Final Plots...")
+    
+    # Ensure Figures directory exists
+    fig_dir = joinpath(@__DIR__, "..", "Figures")
+    mkpath(fig_dir)
     
     # Save the 2x2 Spaghetti Grid
     spaghetti_plot = plot(plot_grid..., layout=(2, 2), size=(1000, 800), 
-                          plot_title="Stochastic Trajectories vs PCD- Penalty ($NUM_RUNS Runs/panel)")
-    spag_path = "Project/Figures/2026-04-07_Exp7_Spaghetti_Grid.png"
+                          plot_title="Stochastic Trajectories vs Antifungal Dose ($NUM_RUNS Runs/panel)")
+    spag_path = joinpath(fig_dir, "Exp7_Spaghetti_Grid.png")
     savefig(spaghetti_plot, spag_path)
     println("Spaghetti Grid saved to: ", spag_path)
     
     # Generate and Save the Grouped Bar Chart
-    dose_labels = string.(death_modifiers)
+    dose_labels = string.(test_doses)
     p_bar = groupedbar([pcd_plus_rates pcd_minus_rates], 
                 labels=["PCD+" "PCD-"],
                 color=[:blue :red],
-                xticks=(1:length(death_modifiers), dose_labels),
-                xlabel="PCD- Death Rate Modifier (Selfish Advantage)",
+                xticks=(1:length(test_doses), dose_labels),
+                xlabel="Antifungal Dose Severity",
                 ylabel="Survival Rate (%)",
-                title="The Cost of Altruism: Survival vs Individual Penalty",
-                legend=:topleft, ylims=(0, 105), size=(700, 500))
+                title="Stochastic Survival Probability vs Dose",
+                legend=:topright, ylims=(0, 105), size=(700, 500))
                 
-    bar_path = "Project/Figures/2026-04-07_Exp7_Survival_Bar.png"
+    bar_path = joinpath(fig_dir, "Exp7_Survival_Bar.png")
     savefig(p_bar, bar_path)
     println("Survival Bar Chart saved to: ", bar_path)
     
     println("\n=== Experiment 7 Complete! ===")
 end
-
 
 run_experiment_7()

@@ -22,7 +22,7 @@ const TIME_STEP_DT = 1.0 / 3.0 # Assuming 1 step = 20 minutes of biological time
 
 # --- Antifungal Exposure Settings ---
 const ANTIFUNGAL_EXPOSURE_MODE = SINGLE_SHOCK   
-const ANTIFUNGAL_PULSE_INTERVAL = 100        
+const ANTIFUNGAL_PULSE_INTERVAL = 50        
 
 # --- Antifungal Spatial Settings ---
 const ANTIFUNGAL_SPATIAL_MODE = UNIFORM
@@ -39,7 +39,7 @@ const NUTRIENT_PULSE_INTERVAL = 36         # If set to PULSATED, how often nutri
 const MAX_BIOMASS_PER_PX = 3 
 
 # --- Environment Levels ---
-const INIT_NUTRIENT_LEVEL = 12.0 
+const INIT_NUTRIENT_LEVEL = 12 
 const INIT_ANTIFUNGAL_LEVEL = 1.5 # Used if SPATIAL_MODE is UNIFORM
     
 # --- Diffusion Settings ---
@@ -850,12 +850,12 @@ function main()
     time_axis = (0:SIMULATION_STEPS) .* TIME_STEP_DT
 
     # Plot 1: Population (Alive)
-    p_pop = Plots.plot(title="C. albicans Growth Under Control Conditions", xlabel="Time (hrs)", ylabel="Cells", linewidth=2, legend=:topleft)
+    p_pop = Plots.plot(title="C. albicans Growth Under $(INIT_ANTIFUNGAL_LEVEL) µg/mL AmB stress", xlabel="Time (hrs)", ylabel="Cells", linewidth=2, legend=:topleft)
     Plots.plot!(p_pop, time_axis, history_plus[:alive], label="PCD+ Alive (Td: $(td_plus_str))", color=:blue)
     Plots.plot!(p_pop, time_axis, history_minus[:alive], label="PCD- Alive (Td: $(td_minus_str))", color=:red)
 
     # Plot 2: Dead Cells On Grid (Apop, Necro, and Starved)
-    p_death = Plots.plot(title="C. albicans Mortality Under Control Conditions", xlabel="Time (hrs)", ylabel="Dead Cells", linewidth=2, legend=:topleft)
+    p_death = Plots.plot(title="C. albicans Mortality Under $(INIT_ANTIFUNGAL_LEVEL) µg/mL AmB stress", xlabel="Time (hrs)", ylabel="Dead Cells", linewidth=2, legend=:topleft)
     Plots.plot!(p_death, time_axis, history_plus[:dead_apop], label="PCD+ Apop", color=:orange)
     Plots.plot!(p_death, time_axis, history_plus[:dead_necro], label="PCD+ Necro", color=:black)
     Plots.plot!(p_death, time_axis, history_minus[:dead_necro], label="PCD- Necro", color=:gray, linestyle=:dash)

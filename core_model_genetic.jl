@@ -153,7 +153,7 @@ function initialize_model(starting_positions::Vector{Tuple{Int, Int}};
     for (i, pos) in enumerate(starting_positions)
         # --- THE FIX ---
         # Instead of randomly seeding new cells, start everyone at exactly 0.5 (unless carrying over from a previous passage)
-        initial_trait = initial_traits !== nothing ? initial_traits[i] : 0.5 
+        initial_trait = initial_traits !== nothing ? initial_traits[i] : 0.1 
         add_agent!(pos, CandidaCell, model, true, false, 0.0, 0.0, false, false, false, 0.0, NEWBORN_BIOMASS, init_internal, true, initial_trait, 0.0, 0.0, 0.0)
     end
     return model

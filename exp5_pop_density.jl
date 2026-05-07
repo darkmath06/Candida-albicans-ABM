@@ -11,7 +11,7 @@ using Plots
 using Random
 
 # Load the core engine
-include("core_model.jl")
+include(joinpath(@__DIR__, "core_model.jl"))
 
 # --- Custom History Tracker ---
 function run_history_simulation(AgentType::Type, pop_size::Int; kwargs...)
@@ -147,15 +147,18 @@ function run_experiment_5()
     end
     
     # 4. Save Data and Plots
-    csv_path = "Project/Data/2026-03-25_Exp5_PopSpatial_TimeSeries.csv" 
+    data_dir = joinpath(@__DIR__, "..", "Data")
+    mkpath(data_dir) # Automatically creates the "Data" folder if it doesn't exist yet!
+    csv_path = joinpath(data_dir, "2026-05-11_Exp5_PopSpatial_TimeSeries.csv" )
     CSV.write(csv_path, results_df)
     println("\nData successfully saved to: ", csv_path)
     
     println("Generating Grid Plot...")
     final_plot = plot(plot_grid..., layout=(length(pop_sizes), length(spatial_modes)), size=(800, 1000), 
                       plot_title="Survival vs Population Size & Spatial Stress Mode")
-    
-    plot_path = "Project/Figures/2026-03-25_Exp5_PopSpatial_Grid.png"
+    fig_dir = joinpath(@__DIR__, "..", "Figures")
+    mkpath(fig_dir)
+    plot_path = joinpath(fig_dir, "2026-05-11_Exp5_PopSpatial_Grid.png")
     savefig(final_plot, plot_path)
     println("Plot successfully saved to: ", plot_path)
     

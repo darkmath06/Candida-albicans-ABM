@@ -10,7 +10,7 @@ using Printf
 using Plots 
 
 # Load the core engine
-include("C:/Users/Mathi/Downloads/UVA Ams/Project/Code/core_model.jl")
+include(joinpath(@__DIR__, "core_model.jl"))
 
 # --- Custom History Tracker ---
 function run_history_simulation(AgentType::Type; kwargs...)
@@ -68,7 +68,7 @@ function run_experiment_1()
     
     # Test 4 uniform doses to keep a clean 4x4 plot grid
     uniform_doses = [0.5, 1.0, 1.5, 2.0]
-    apop_capacities = [0.5, 1.5, 2.5, 4.0] 
+    apop_capacities = [0.0, 1.5, 2.5, 4.0] 
     
     # Time axis for plotting (converting steps to hours)
     time_axis = (0:SIMULATION_STEPS) .* TIME_STEP_DT
@@ -172,7 +172,9 @@ function run_experiment_1()
     end
     
     # 4. Save the Data
-    csv_path = "C:/Users/Mathi/Downloads/UVA Ams/Project/Data/2026-03-27_Exp1_KinShielding_UniformDose_TimeSeries.csv" 
+    data_dir = joinpath(@__DIR__, "..", "Data")
+    mkpath(data_dir)
+    csv_path = joinpath(data_dir, "2026-03-27_Exp1_KinShielding_UniformDose_TimeSeries.csv")
     CSV.write(csv_path, results_df)
     println("\nData successfully saved to: ", csv_path)
     
@@ -181,7 +183,10 @@ function run_experiment_1()
     final_plot = plot(plot_grid..., layout=(length(uniform_doses), length(apop_capacities)), size=(1200, 1000), 
                       plot_title="Sponge Effect: Survival vs Uniform Dose & Apop Binding Capacity")
     
-    plot_path = "C:/Users/Mathi/Downloads/UVA Ams/Project/Figures/2026-03-27_Exp1_KinShielding_UniformDose_Grid.png"
+    fig_dir = joinpath(@__DIR__, "..", "Figures")
+    mkpath(fig_dir) # Automatically creates the "Figures" folder if it doesn't exist yet!
+    
+    plot_path = joinpath(fig_dir, "2026-03-27_Exp1_KinShielding_UniformDose_Grid.png")
     savefig(final_plot, plot_path)
     println("Plot successfully saved to: ", plot_path)
     

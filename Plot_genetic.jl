@@ -10,8 +10,11 @@ using StatsPlots
 using Statistics
 
 function generate_evolutionary_boxplots()
-    csv_path = "Project/Data/2026-04-21_Evolutionary_Dose_Sweep_Results.csv" 
-    
+    data_dir = joinpath(@__DIR__, "..", "Data")
+    mkpath(data_dir) # Automatically creates the "Data" folder if it doesn't exist yet!
+
+    csv_path = joinpath(data_dir, "2026-04-21_Evolutionary_Dose_Sweep_Results.csv")
+
     if !isfile(csv_path)
         println("Error: File not found at $csv_path.")
         return
@@ -65,8 +68,10 @@ function generate_evolutionary_boxplots()
     )
     
     # 4. Save and Show
-    plot_path = "Project/Figures/Evolutionary_Boxplot_Final.png"
-    mkpath("Project/Figures")
+    fig_dir = joinpath(@__DIR__, "..", "Figures")
+    mkpath(fig_dir) # Automatically creates the "Figures" folder if it doesn't exist yet!
+    
+    plot_path = joinpath(fig_dir, "Evolutionary_Boxplot_Final.png")
     savefig(p, plot_path)
     println("Boxplot saved to: ", plot_path)
     display(p)
