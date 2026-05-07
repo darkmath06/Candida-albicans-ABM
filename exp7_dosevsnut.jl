@@ -54,7 +54,7 @@ function run_experiment_3()
     uniform_doses = [0.5, 1.0, 1.5, 2.0]        # Dosages for UNIFORM mode
     nutrient_levels = [6.0, 10.0, 14.0, 18.0]   # Varying starting nutrient capacities
     fixed_res_frac = 0.1                        # Hold reservoir capacity constant
-    
+    max_binding_apop = 0.42
     time_axis = (0:SIMULATION_STEPS) .* TIME_STEP_DT
     
     # 2. Prepare DataFrame
@@ -88,7 +88,8 @@ function run_experiment_3()
                 spatial_mode = UNIFORM, # Fixed to Uniform
                 source_dose = dose, 
                 init_nutrient = nutrient,
-                reservoir_fraction = fixed_res_frac
+                reservoir_fraction = fixed_res_frac,
+                max_binding_apop = 0.42
             )
             
             # PCD- Colony

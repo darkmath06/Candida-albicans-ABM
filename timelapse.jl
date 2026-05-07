@@ -167,8 +167,8 @@ end
 # ==========================================
 
 # Define the specific combination you want to visualize:
-TARGET_DOSE = 0.5 #make sure it is an decimal
-TARGET_MUTATION_RATE = 0.1
+TARGET_DOSE = 0.0 #make sure it is an decimal
+TARGET_MUTATION_RATE = 0.05
 PASSAGES_TO_RUN = 5
 
 # Create a clear name for the resulting file
